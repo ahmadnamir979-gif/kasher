@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import {
     Home, Archive, Wallet, Keyboard, RefreshCw, X, Trash2, LogOut,
     Save, Printer, ReceiptText, Gift, DollarSign, FileText, Undo2,
-    Boxes, Package as PackageIcon, Search, MessageCircle
+    Boxes, Package as PackageIcon, Search, MessageCircle, PauseCircle, PlayCircle
 } from "lucide-react";
 import { ReceiptPreview, printReceipt } from "@/components/Receipt";
 import { ShiftBadge, ShiftManager } from "@/components/ShiftManager";
@@ -71,6 +71,8 @@ export default function POS() {
     const [pastSales, setPastSales] = useState([]);
     const [waPhone, setWaPhone] = useState("");
     const [waOpen, setWaOpen] = useState(false);
+    const [held, setHeld] = useState([]);
+    const [heldOpen, setHeldOpen] = useState(false);
     const [now, setNow] = useState(new Date());
     const searchRef = useRef(null);
 
@@ -80,8 +82,8 @@ export default function POS() {
     }, []);
 
     const refresh = async () => {
-        const [p, c, w] = await Promise.all([api.get("/products"), api.get("/categories"), api.get("/warehouses")]);
-        setProducts(p.data); setCategories(c.data); setWarehouses(w.data);
+        const [p, c, w, h] = await Promise.all([api.get("/products"), api.get("/categories"), api.get("/warehouses"), api.get("/held-invoices")]);
+        setProducts(p.data); setCategories(c.data); setWarehouses(w.data); setHeld(h.data);
         const def = w.data.find(x => x.is_default) || w.data[0];
         if (def && !warehouseId) setWarehouseId(def.id);
     };
@@ -159,6 +161,30 @@ export default function POS() {
     };
 
     const catColor = (id) => categories.find(c => c.id === id)?.color || "#3b82f6";
+
+    const holdCart = async () => {
+        if (cart.length === 0) return toast.error("السلة فارغة");
+        try {
+            await api.post("/held-invoices", { items: cart, discount, warehouse_id: warehouseId, customer_name: "زبون نقدي" });
+            toast.success("تمّ تعليق الفاتورة");
+            setCart([]); setDiscount(0);
+            refresh();
+        } catch (e) { toast.error(formatApiError(e)); }
+    };
+    const resumeHeld = async (h) => {
+        if (cart.length > 0 && !window.confirm("سيتم استبدال السلة الحالية. متابعة؟")) return;
+        setCart(h.items.map(i => ({ ...i, stock: i.stock || 0 })));
+        setDiscount(h.discount || 0);
+        setHeldOpen(false);
+        await api.delete(`/held-invoices/${h.id}`);
+        refresh();
+        toast.success("تمّ استئناف الفاتورة");
+    };
+    const deleteHeld = async (h) => {
+        if (!window.confirm("حذف الفاتورة المعلّقة؟")) return;
+        await api.delete(`/held-invoices/${h.id}`);
+        refresh();
+    };
     const lastInvoiceNo = lastSale?.invoice_no || products.length; // fallback for display
     const currentWarehouse = warehouses.find(w => w.id === warehouseId);
 
@@ -200,6 +226,11 @@ export default function POS() {
                     <div><div className="text-slate-400 text-[10px]">اختصارات</div><div className="font-bold">F1 نقد • F2 بطاقة</div></div>
                 </div>
                 <ShiftBadge shift={shift} onOpen={() => setShiftDlg(true)} onClose={() => setShiftDlg(true)} />
+                <button onClick={() => setHeldOpen(true)} data-testid="held-invoices-btn"
+                    className="h-11 px-3 rounded-md bg-fuchsia-500 hover:bg-fuchsia-600 text-white text-sm font-semibold flex items-center gap-2 transition-colors shadow-sm">
+                    <PauseCircle className="w-4 h-4" /> معلّقة
+                    {held.length > 0 && <span className="bg-white text-fuchsia-700 text-xs font-bold rounded-full min-w-5 h-5 px-1.5 grid place-items-center">{held.length}</span>}
+                </button>
                 <TopBtn icon={RefreshCw} label="تحديث" color="emerald" onClick={refresh} testid="pos-refresh-btn" />
                 <div className="text-white text-xs bg-slate-950/40 rounded px-3 py-1.5 border border-slate-700 tabular-nums">
                     <div className="text-slate-400 text-[10px]">{now.toLocaleDateString("en-GB")}</div>
@@ -316,13 +347,14 @@ export default function POS() {
                         </div>
                     </div>
                     {/* Bottom action buttons - matches reference */}
-                    <div className="grid grid-cols-8 gap-1.5 p-2 bg-white border-t border-zinc-200">
+                    <div className="grid grid-cols-9 gap-1.5 p-2 bg-white border-t border-zinc-200">
                         <ActBtn icon={Save} label="حفظ الفاتورة" color="sky" onClick={() => pay("cash")} testid="pay-cash-btn" />
                         <ActBtn icon={Printer} label="طباعة الفاتورة" color="cyan" onClick={() => lastSale && printReceipt("receipt-print-area")} testid="print-last-btn" />
                         <ActBtn icon={ReceiptText} label="طباعة آخر فاتورة" color="pink" onClick={() => lastSale ? setReceiptOpen(true) : toast.error("لا توجد فاتورة سابقة")} />
                         <ActBtn icon={Gift} label="وصل هدية" color="rose" onClick={() => toast.info("قريباً")} />
                         <ActBtn icon={DollarSign} label="تفاصيل الدفع" color="violet" onClick={() => pay("card")} testid="pay-card-btn" />
                         <ActBtn icon={FileText} label="عرض سعر" color="amber" onClick={() => toast.info("قريباً")} />
+                        <ActBtn icon={PauseCircle} label="تعليق الفاتورة" color="pink" onClick={holdCart} testid="hold-invoice-btn" />
                         <ActBtn icon={Undo2} label="فاتورة مردودات" color="orange" onClick={openReturns} testid="open-returns-btn" />
                         <ActBtn icon={MessageCircle} label="واتساب للزبون" color="emerald" onClick={openWA} testid="whatsapp-btn" />
                     </div>
@@ -437,6 +469,47 @@ export default function POS() {
                         <Button variant="outline" onClick={() => setWaOpen(false)}>إلغاء</Button>
                         <Button onClick={sendWA} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" data-testid="wa-send-btn"><MessageCircle className="w-4 h-4" /> فتح واتساب</Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            {/* Held invoices dialog */}
+            <Dialog open={heldOpen} onOpenChange={setHeldOpen}>
+                <DialogContent dir="rtl" className="bg-white max-w-3xl">
+                    <DialogHeader><DialogTitle>الفواتير المعلّقة</DialogTitle></DialogHeader>
+                    <div className="max-h-[60vh] overflow-y-auto">
+                        {held.length === 0 ? (
+                            <div className="p-8 text-center text-slate-400 text-sm">
+                                <PauseCircle className="w-12 h-12 mx-auto mb-2 opacity-30" />
+                                لا توجد فواتير معلّقة
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {held.map(h => {
+                                    const t = h.items.reduce((s, i) => s + i.qty * i.price - (i.discount || 0), 0);
+                                    return (
+                                        <div key={h.id} className="border border-zinc-200 rounded-md p-3 hover:border-blue-500 hover:shadow-sm transition-all" data-testid={`held-row-${h.id}`}>
+                                            <div className="flex items-start justify-between mb-2">
+                                                <div>
+                                                    <div className="font-semibold text-sm">{h.label}</div>
+                                                    <div className="text-xs text-slate-500">{h.user_name} • {h.created_at?.substring(11, 16)}</div>
+                                                </div>
+                                                <button onClick={() => deleteHeld(h)} className="text-rose-500 hover:bg-rose-50 p-1 rounded"><Trash2 className="w-4 h-4" /></button>
+                                            </div>
+                                            <div className="text-xs text-slate-600 mb-2 max-h-16 overflow-y-auto">
+                                                {h.items.slice(0, 5).map((i, k) => (
+                                                    <div key={k} className="flex justify-between"><span className="truncate">• {i.name} × {i.qty}</span><span className="tabular-nums shrink-0 ms-2">{fmt(i.qty * i.price)}</span></div>
+                                                ))}
+                                                {h.items.length > 5 && <div className="text-slate-400">... +{h.items.length - 5} صنف</div>}
+                                            </div>
+                                            <div className="flex items-center justify-between border-t pt-2">
+                                                <span className="text-lg font-bold tabular-nums text-blue-700">{fmt(t)}</span>
+                                                <Button size="sm" onClick={() => resumeHeld(h)} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1" data-testid={`resume-${h.id}`}><PlayCircle className="w-3.5 h-3.5" /> استئناف</Button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
                 </DialogContent>
             </Dialog>
         </div>

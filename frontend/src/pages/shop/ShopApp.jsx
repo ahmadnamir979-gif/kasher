@@ -1,6 +1,6 @@
 import { Routes, Route, useLocation, Navigate } from "react-router-dom";
 import AppShell, { SideLink } from "@/components/layout/AppShell";
-import { LayoutDashboard, ScanBarcode, Package, ShoppingCart, Truck, Users, UserCog, Receipt, BarChart3, Wallet, Clock, Warehouse, Tag } from "lucide-react";
+import { LayoutDashboard, ScanBarcode, Package, ShoppingCart, Truck, Users, UserCog, Receipt, BarChart3, Wallet, Clock, Warehouse, Tag, ArrowLeftRight } from "lucide-react";
 import POS from "@/pages/shop/POS";
 import Products from "@/pages/shop/Products";
 import Sales from "@/pages/shop/Sales";
@@ -14,6 +14,7 @@ import Dashboard from "@/pages/shop/Dashboard";
 import Shifts from "@/pages/shop/Shifts";
 import Warehouses from "@/pages/shop/Warehouses";
 import BarcodeLabels from "@/pages/shop/BarcodeLabels";
+import Transfers from "@/pages/shop/Transfers";
 import { RenewSuccess, RenewCancel } from "@/pages/shop/Renew";
 
 const nav = [
@@ -21,6 +22,7 @@ const nav = [
     { to: "/dashboard", icon: LayoutDashboard, label: "لوحة التحكم" },
     { to: "/products", icon: Package, label: "المنتجات والمخزون" },
     { to: "/warehouses", icon: Warehouse, label: "المخازن" },
+    { to: "/transfers", icon: ArrowLeftRight, label: "تحويلات المخزون" },
     { to: "/barcodes", icon: Tag, label: "ملصقات الباركود" },
     { to: "/sales", icon: ShoppingCart, label: "المبيعات والمرتجعات" },
     { to: "/purchases", icon: Truck, label: "المشتريات" },
@@ -50,6 +52,7 @@ export default function ShopApp() {
                 <Route path="dashboard" element={<Dashboard />} />
                 <Route path="products" element={<Products />} />
                 <Route path="warehouses" element={<Warehouses />} />
+                <Route path="transfers" element={<Transfers />} />
                 <Route path="barcodes" element={<BarcodeLabels />} />
                 <Route path="sales" element={<Sales />} />
                 <Route path="purchases" element={<Purchases />} />

@@ -176,6 +176,25 @@ class ShiftAction(BaseModel):
     closing_cash: Optional[float] = None
     notes: Optional[str] = ""
 
+class HeldInvoiceIn(BaseModel):
+    label: Optional[str] = ""
+    customer_name: Optional[str] = "زبون نقدي"
+    warehouse_id: Optional[str] = None
+    items: List[InvoiceItem]
+    discount: float = 0
+    notes: Optional[str] = ""
+
+class TransferItem(BaseModel):
+    product_id: str
+    name: str
+    qty: float
+
+class TransferIn(BaseModel):
+    from_warehouse_id: str
+    to_warehouse_id: str
+    items: List[TransferItem]
+    notes: Optional[str] = ""
+
 class CheckoutIn(BaseModel):
     months: int = 12
     origin_url: str
@@ -447,11 +466,24 @@ async def delete_warehouse(wid: str, user=Depends(require_shop_user)):
 async def list_products(user=Depends(require_shop_user)):
     return await db.products.find({"shop_id": sid(user)}, {"_id": 0}).sort("name", 1).to_list(5000)
 
+def _gen_barcode() -> str:
+    """Generate a 13-digit EAN-13-style internal barcode (prefix 2)."""
+    import random
+    return "2" + "".join(str(random.randint(0, 9)) for _ in range(12))
+
 @api.post("/products")
 async def create_product(data: ProductIn, user=Depends(require_shop_user)):
     payload = data.model_dump()
     if not payload.get("warehouse_id"):
         payload["warehouse_id"] = await _ensure_default_warehouse(sid(user))
+    if not payload.get("barcode"):
+        # Ensure uniqueness within shop
+        for _ in range(5):
+            b = _gen_barcode()
+            existing = await db.products.find_one({"shop_id": sid(user), "barcode": b})
+            if not existing:
+                payload["barcode"] = b
+                break
     doc = {"id": new_id(), "shop_id": sid(user), **payload, "created_at": iso(now_utc())}
     await db.products.insert_one(doc)
     doc.pop("_id", None)
@@ -768,6 +800,109 @@ async def close_shift(data: ShiftAction, user=Depends(require_shop_user)):
 async def list_shifts(user=Depends(require_shop_user), limit: int = 100):
     return await db.shifts.find({"shop_id": sid(user)}, {"_id": 0}).sort("opened_at", -1).to_list(limit)
 
+# ---------- Held Invoices (parked carts) ----------
+@api.get("/held-invoices")
+async def list_held(user=Depends(require_shop_user)):
+    return await db.held_invoices.find({"shop_id": sid(user)}, {"_id": 0}).sort("created_at", -1).to_list(200)
+
+@api.post("/held-invoices")
+async def hold_invoice(data: HeldInvoiceIn, user=Depends(require_shop_user)):
+    if not data.items:
+        raise HTTPException(400, "لا يمكن تعليق فاتورة فارغة")
+    doc = {
+        "id": new_id(), "shop_id": sid(user),
+        "user_id": user["id"], "user_name": user.get("name", ""),
+        "label": data.label or f"معلّقة {now_utc().strftime('%H:%M')}",
+        "customer_name": data.customer_name or "زبون نقدي",
+        "warehouse_id": data.warehouse_id,
+        "items": [i.model_dump() for i in data.items],
+        "discount": data.discount, "notes": data.notes or "",
+        "created_at": iso(now_utc()),
+    }
+    await db.held_invoices.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api.delete("/held-invoices/{hid}")
+async def delete_held(hid: str, user=Depends(require_shop_user)):
+    await db.held_invoices.delete_one({"id": hid, "shop_id": sid(user)})
+    return {"ok": True}
+
+# ---------- Stock Transfers ----------
+@api.get("/transfers")
+async def list_transfers(user=Depends(require_shop_user)):
+    rows = await db.transfers.find({"shop_id": sid(user)}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    warehouses = {w["id"]: w["name"] for w in await db.warehouses.find({"shop_id": sid(user)}, {"_id": 0}).to_list(100)}
+    for r in rows:
+        r["from_warehouse_name"] = warehouses.get(r.get("from_warehouse_id"), "—")
+        r["to_warehouse_name"] = warehouses.get(r.get("to_warehouse_id"), "—")
+    return rows
+
+@api.get("/transfers/{tid}")
+async def get_transfer(tid: str, user=Depends(require_shop_user)):
+    t = await db.transfers.find_one({"id": tid, "shop_id": sid(user)}, {"_id": 0})
+    if not t: raise HTTPException(404, "Not found")
+    return t
+
+@api.post("/transfers")
+async def create_transfer(data: TransferIn, user=Depends(require_shop_user)):
+    if data.from_warehouse_id == data.to_warehouse_id:
+        raise HTTPException(400, "المخزن المصدر والوجهة متطابقان")
+    if not data.items:
+        raise HTTPException(400, "أضف صنفاً واحداً على الأقل")
+    src_wh = await db.warehouses.find_one({"id": data.from_warehouse_id, "shop_id": sid(user)})
+    dst_wh = await db.warehouses.find_one({"id": data.to_warehouse_id, "shop_id": sid(user)})
+    if not src_wh or not dst_wh:
+        raise HTTPException(404, "مخزن غير موجود")
+    counter = await db.counters.find_one_and_update(
+        {"shop_id": sid(user), "type": "transfer"},
+        {"$inc": {"value": 1}}, upsert=True, return_document=True
+    )
+    trans_no = counter["value"] if counter else 1
+    processed_items = []
+    for it in data.items:
+        src_prod = await db.products.find_one({"id": it.product_id, "shop_id": sid(user)})
+        if not src_prod:
+            raise HTTPException(400, f"المنتج غير موجود: {it.name}")
+        if src_prod.get("warehouse_id") != data.from_warehouse_id:
+            raise HTTPException(400, f"'{src_prod['name']}' ليس في المخزن المصدر")
+        if it.qty <= 0:
+            raise HTTPException(400, "الكمية يجب أن تكون أكبر من صفر")
+        if it.qty > src_prod.get("stock", 0):
+            raise HTTPException(400, f"الكمية المطلوبة أكبر من الرصيد لـ '{src_prod['name']}'")
+        # Find or create twin product in destination warehouse
+        twin = await db.products.find_one({
+            "shop_id": sid(user), "warehouse_id": data.to_warehouse_id,
+            "name": src_prod["name"]
+        })
+        if twin:
+            await db.products.update_one({"id": twin["id"]}, {"$inc": {"stock": it.qty}})
+        else:
+            twin_doc = {
+                **{k: src_prod[k] for k in ["name", "unit", "cost_price", "sale_price", "min_stock", "tax_rate", "is_active", "category_id"] if k in src_prod},
+                "id": new_id(), "shop_id": sid(user),
+                "warehouse_id": data.to_warehouse_id,
+                "barcode": src_prod.get("barcode") or _gen_barcode(),
+                "stock": it.qty,
+                "created_at": iso(now_utc()),
+            }
+            # Barcodes must be unique per shop — if twin uses same barcode as src, that's fine as long as they're in different warehouses; but our index isn't unique on barcode
+            await db.products.insert_one(twin_doc)
+        # Decrement source
+        await db.products.update_one({"id": src_prod["id"]}, {"$inc": {"stock": -it.qty}})
+        processed_items.append({"product_id": it.product_id, "name": src_prod["name"], "qty": it.qty})
+    doc = {
+        "id": new_id(), "shop_id": sid(user), "transfer_no": trans_no,
+        "from_warehouse_id": data.from_warehouse_id, "from_warehouse_name": src_wh["name"],
+        "to_warehouse_id": data.to_warehouse_id, "to_warehouse_name": dst_wh["name"],
+        "items": processed_items, "notes": data.notes or "",
+        "user_id": user["id"], "user_name": user.get("name", ""),
+        "created_at": iso(now_utc()),
+    }
+    await db.transfers.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
 # ---------- Products Excel Import/Export ----------
 @api.get("/products/template")
 async def products_template(user=Depends(require_shop_user)):
@@ -824,7 +959,7 @@ async def products_import(file: UploadFile = File(...), user=Depends(require_sho
             doc = {
                 "id": new_id(), "shop_id": sid(user),
                 "name": str(name).strip(),
-                "barcode": str(row[i_bar]).strip() if i_bar is not None and row[i_bar] else "",
+                "barcode": (str(row[i_bar]).strip() if i_bar is not None and row[i_bar] else _gen_barcode()),
                 "category_id": cat_id,
                 "unit": str(row[i_unit]).strip() if i_unit is not None and row[i_unit] else "قطعة",
                 "cost_price": float(row[i_cost] or 0) if i_cost is not None else 0,
