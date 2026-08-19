@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
-import { api, formatApiError, fmt } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import { api, formatApiError, fmt, API_URL } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, Tag } from "lucide-react";
+import { Plus, Trash2, Tag, FileSpreadsheet, Upload, Download } from "lucide-react";
 import { toast } from "sonner";
 
 export default function Products() {
@@ -14,7 +14,9 @@ export default function Products() {
     const [cats, setCats] = useState([]);
     const [open, setOpen] = useState(false);
     const [catOpen, setCatOpen] = useState(false);
+    const [importResult, setImportResult] = useState(null);
     const [q, setQ] = useState("");
+    const fileRef = useRef(null);
     const [form, setForm] = useState({ name: "", barcode: "", category_id: "", cost_price: 0, sale_price: 0, stock: 0, min_stock: 0, unit: "قطعة", tax_rate: 0, is_active: true });
     const [cat, setCat] = useState({ name: "", color: "#3b82f6" });
 
@@ -34,6 +36,26 @@ export default function Products() {
     };
     const del = async (p) => { if (!window.confirm(`حذف ${p.name}؟`)) return; await api.delete(`/products/${p.id}`); load(); };
 
+    const downloadTemplate = async () => {
+        try {
+            const res = await api.get("/products/template", { responseType: "blob" });
+            const url = URL.createObjectURL(res.data);
+            const a = document.createElement("a"); a.href = url; a.download = "products_template.xlsx"; a.click();
+            URL.revokeObjectURL(url);
+        } catch (e) { toast.error(formatApiError(e)); }
+    };
+    const uploadExcel = async (file) => {
+        if (!file) return;
+        const fd = new FormData(); fd.append("file", file);
+        try {
+            const { data } = await api.post("/products/import", fd, { headers: { "Content-Type": "multipart/form-data" } });
+            setImportResult(data);
+            toast.success(`تمّ استيراد ${data.imported} منتج`);
+            load();
+        } catch (e) { toast.error(formatApiError(e)); }
+        if (fileRef.current) fileRef.current.value = "";
+    };
+
     const filtered = items.filter(p => !q || p.name.includes(q) || (p.barcode || "").includes(q));
 
     return (
@@ -41,6 +63,9 @@ export default function Products() {
             <div className="p-5 border-b border-zinc-200 flex items-center justify-between gap-3">
                 <div className="flex-1"><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ابحث…" className="max-w-md" data-testid="products-search" /></div>
                 <div className="flex gap-2">
+                    <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => uploadExcel(e.target.files?.[0])} data-testid="excel-file-input" />
+                    <Button variant="outline" onClick={downloadTemplate} className="gap-2" data-testid="download-template-btn"><Download className="w-4 h-4" /> قالب</Button>
+                    <Button variant="outline" onClick={() => fileRef.current?.click()} className="gap-2 border-emerald-500 text-emerald-700 hover:bg-emerald-50" data-testid="import-excel-btn"><FileSpreadsheet className="w-4 h-4" /> استيراد Excel</Button>
                     <Dialog open={catOpen} onOpenChange={setCatOpen}>
                         <DialogTrigger asChild><Button variant="outline" className="gap-2" data-testid="add-category-btn"><Tag className="w-4 h-4" /> فئة</Button></DialogTrigger>
                         <DialogContent dir="rtl" className="bg-white">
@@ -77,6 +102,16 @@ export default function Products() {
                 </div>
             </div>
             <div className="overflow-x-auto">
+                {importResult && (
+                    <div className="m-4 p-3 rounded-md bg-emerald-50 border border-emerald-200 text-sm">
+                        <div className="font-semibold text-emerald-900">تمّ استيراد {importResult.imported} منتج بنجاح</div>
+                        {importResult.errors?.length > 0 && (
+                            <ul className="mt-2 text-xs text-rose-700 list-disc pr-5">
+                                {importResult.errors.slice(0, 5).map((e, i) => <li key={i}>{e}</li>)}
+                            </ul>
+                        )}
+                    </div>
+                )}
                 <table className="w-full text-sm">
                     <thead className="bg-zinc-50 border-b border-zinc-200 text-right text-xs text-slate-600">
                         <tr><th className="p-3">المنتج</th><th className="p-3">الباركود</th><th className="p-3">الفئة</th><th className="p-3">التكلفة</th><th className="p-3">السعر</th><th className="p-3">المخزون</th><th className="p-3"></th></tr>

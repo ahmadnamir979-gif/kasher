@@ -6,15 +6,20 @@ load_dotenv(ROOT_DIR / '.env')
 
 import os
 import uuid
+import io
 import bcrypt
 import jwt as pyjwt
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Literal
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, UploadFile, File
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
 import logging
+from openpyxl import load_workbook, Workbook
+from emergentintegrations.payments.stripe.checkout import (
+    StripeCheckout, CheckoutSessionRequest
+)
 
 # ---------- Setup ----------
 mongo_url = os.environ['MONGO_URL']
@@ -161,6 +166,10 @@ class ShiftAction(BaseModel):
     opening_cash: float = 0
     closing_cash: Optional[float] = None
     notes: Optional[str] = ""
+
+class CheckoutIn(BaseModel):
+    months: int = 12
+    origin_url: str
 
 # ---------- Auth Dependencies ----------
 async def get_current_user(request: Request) -> dict:
@@ -469,6 +478,8 @@ def _compute_totals(items, discount):
 @api.post("/sales")
 async def create_sale(data: SaleIn, user=Depends(require_shop_user)):
     subtotal, tax, total, cost_total = _compute_totals(data.items, data.discount)
+    # Find current open shift for this user (if any)
+    shift = await db.shifts.find_one({"shop_id": sid(user), "user_id": user["id"], "closed_at": None})
     # Generate sequential invoice number per shop
     counter = await db.counters.find_one_and_update(
         {"shop_id": sid(user), "type": "sale"},
@@ -477,6 +488,7 @@ async def create_sale(data: SaleIn, user=Depends(require_shop_user)):
     inv_no = counter["value"] if counter else 1
     doc = {
         "id": new_id(), "shop_id": sid(user), "invoice_no": inv_no,
+        "shift_id": shift["id"] if shift else None,
         "cashier_id": user["id"], "cashier_name": user.get("name",""),
         "customer_id": data.customer_id, "customer_name": data.customer_name or "زبون نقدي",
         "items": [i.model_dump() for i in data.items],
@@ -602,10 +614,219 @@ async def close_shift(data: ShiftAction, user=Depends(require_shop_user)):
     shift = await db.shifts.find_one({"shop_id": sid(user), "user_id": user["id"], "closed_at": None})
     if not shift:
         raise HTTPException(400, "لا توجد وردية مفتوحة")
+    # Compute cash sales during shift
+    sales = await db.sales.aggregate([
+        {"$match": {"shift_id": shift["id"], "payment_method": "cash", "is_return": False}},
+        {"$group": {"_id": None, "total": {"$sum": "$total"}, "count": {"$sum": 1}}}
+    ]).to_list(1)
+    returns = await db.sales.aggregate([
+        {"$match": {"shift_id": shift["id"], "is_return": True}},
+        {"$group": {"_id": None, "total": {"$sum": "$total"}}}
+    ]).to_list(1)
+    all_sales = await db.sales.aggregate([
+        {"$match": {"shift_id": shift["id"], "is_return": False}},
+        {"$group": {"_id": None, "total": {"$sum": "$total"}, "count": {"$sum": 1}}}
+    ]).to_list(1)
+    cash_sales = sales[0]["total"] if sales else 0
+    returns_total = abs(returns[0]["total"]) if returns else 0
+    total_sales = all_sales[0]["total"] if all_sales else 0
+    invoices_count = all_sales[0]["count"] if all_sales else 0
+    expected_cash = shift["opening_cash"] + cash_sales - returns_total
+    closing_cash = data.closing_cash or 0
+    variance = closing_cash - expected_cash
+    summary = {
+        "cash_sales": cash_sales, "returns_total": returns_total,
+        "total_sales": total_sales, "invoices_count": invoices_count,
+        "expected_cash": expected_cash, "closing_cash": closing_cash,
+        "variance": variance,
+    }
     await db.shifts.update_one(
         {"id": shift["id"]},
-        {"$set": {"closing_cash": data.closing_cash or 0, "closed_at": iso(now_utc()), "notes": data.notes or shift.get("notes","")}}
+        {"$set": {
+            "closing_cash": closing_cash, "closed_at": iso(now_utc()),
+            "notes": data.notes or shift.get("notes",""),
+            "summary": summary,
+        }}
     )
+    return {"ok": True, "summary": summary}
+
+@api.get("/shifts")
+async def list_shifts(user=Depends(require_shop_user), limit: int = 100):
+    return await db.shifts.find({"shop_id": sid(user)}, {"_id": 0}).sort("opened_at", -1).to_list(limit)
+
+# ---------- Products Excel Import/Export ----------
+@api.get("/products/template")
+async def products_template(user=Depends(require_shop_user)):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Products"
+    ws.append(["name", "barcode", "category", "unit", "cost_price", "sale_price", "stock", "min_stock", "tax_rate"])
+    ws.append(["مثال: علبة تونا", "6291001234567", "مواد غذائية", "قطعة", 3.0, 5.0, 100, 10, 0])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return Response(content=buf.read(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": "attachment; filename=products_template.xlsx"})
+
+@api.post("/products/import")
+async def products_import(file: UploadFile = File(...), user=Depends(require_shop_user)):
+    if not file.filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(400, "يجب رفع ملف Excel (.xlsx)")
+    content = await file.read()
+    try:
+        wb = load_workbook(io.BytesIO(content), data_only=True)
+        ws = wb.active
+    except Exception as e:
+        raise HTTPException(400, f"ملف Excel غير صالح: {e}")
+    rows = list(ws.iter_rows(values_only=True))
+    if len(rows) < 2:
+        return {"imported": 0, "errors": ["الملف فارغ"]}
+    headers = [str(h).strip().lower() if h else "" for h in rows[0]]
+    def idx(name): return headers.index(name) if name in headers else None
+    i_name = idx("name"); i_bar = idx("barcode"); i_cat = idx("category"); i_unit = idx("unit")
+    i_cost = idx("cost_price"); i_sale = idx("sale_price"); i_stock = idx("stock")
+    i_min = idx("min_stock"); i_tax = idx("tax_rate")
+    if i_name is None or i_sale is None:
+        raise HTTPException(400, "الأعمدة المطلوبة: name, sale_price")
+    # Preload existing categories
+    cats = await db.categories.find({"shop_id": sid(user)}, {"_id": 0}).to_list(1000)
+    cat_by_name = {c["name"]: c["id"] for c in cats}
+    imported = 0
+    errors = []
+    for ridx, row in enumerate(rows[1:], start=2):
+        try:
+            name = row[i_name]
+            if not name: continue
+            cat_id = None
+            if i_cat is not None and row[i_cat]:
+                cname = str(row[i_cat]).strip()
+                if cname in cat_by_name:
+                    cat_id = cat_by_name[cname]
+                else:
+                    new_cat = {"id": new_id(), "shop_id": sid(user), "name": cname, "color": "#3b82f6", "created_at": iso(now_utc())}
+                    await db.categories.insert_one(new_cat)
+                    cat_by_name[cname] = new_cat["id"]
+                    cat_id = new_cat["id"]
+            doc = {
+                "id": new_id(), "shop_id": sid(user),
+                "name": str(name).strip(),
+                "barcode": str(row[i_bar]).strip() if i_bar is not None and row[i_bar] else "",
+                "category_id": cat_id,
+                "unit": str(row[i_unit]).strip() if i_unit is not None and row[i_unit] else "قطعة",
+                "cost_price": float(row[i_cost] or 0) if i_cost is not None else 0,
+                "sale_price": float(row[i_sale] or 0),
+                "stock": float(row[i_stock] or 0) if i_stock is not None else 0,
+                "min_stock": float(row[i_min] or 0) if i_min is not None else 0,
+                "tax_rate": float(row[i_tax] or 0) if i_tax is not None else 0,
+                "is_active": True, "created_at": iso(now_utc()),
+            }
+            await db.products.insert_one(doc)
+            imported += 1
+        except Exception as e:
+            errors.append(f"سطر {ridx}: {e}")
+    return {"imported": imported, "errors": errors[:20]}
+
+# ---------- Stripe subscription checkout ----------
+def _stripe():
+    return StripeCheckout(
+        api_key=os.environ.get("STRIPE_API_KEY", "sk_test_emergent"),
+        webhook_url="",  # unused for create_checkout_session
+    )
+
+@api.post("/payments/checkout")
+async def create_checkout(data: CheckoutIn, user=Depends(get_current_user)):
+    # Only shop owners can renew their own subscription
+    if user["role"] not in ("shop_owner", "super_admin"):
+        raise HTTPException(403, "غير مسموح")
+    shop_id = user.get("shop_id")
+    if user["role"] == "super_admin":
+        raise HTTPException(400, "شراء الاشتراك من واجهة المحل")
+    months = max(1, min(60, data.months))
+    yearly = float(os.environ.get("SUBSCRIPTION_YEARLY_USD", "99"))
+    amount = round(yearly * (months / 12.0), 2)
+
+    host_base = data.origin_url.rstrip("/")
+    success_url = f"{host_base}/renew/success?session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = f"{host_base}/renew/cancel"
+
+    stripe_checkout = StripeCheckout(
+        api_key=os.environ.get("STRIPE_API_KEY", "sk_test_emergent"),
+        webhook_url=f"{host_base}/api/webhook/stripe",
+    )
+    req = CheckoutSessionRequest(
+        amount=amount, currency="usd",
+        success_url=success_url, cancel_url=cancel_url,
+        metadata={"shop_id": shop_id, "months": str(months), "user_id": user["id"]},
+    )
+    session = await stripe_checkout.create_checkout_session(req)
+    await db.payment_transactions.insert_one({
+        "id": new_id(), "session_id": session.session_id,
+        "shop_id": shop_id, "user_id": user["id"],
+        "amount": amount, "currency": "usd", "months": months,
+        "status": "initiated", "payment_status": "pending",
+        "created_at": iso(now_utc()), "updated_at": iso(now_utc()),
+    })
+    return {"checkout_url": session.url, "session_id": session.session_id, "amount": amount, "months": months}
+
+async def _apply_paid_session(session_id: str):
+    """Idempotent: mark session paid and extend shop subscription."""
+    tx = await db.payment_transactions.find_one({"session_id": session_id})
+    if not tx:
+        return None
+    if tx.get("payment_status") == "paid":
+        return tx
+    shop = await db.shops.find_one({"id": tx["shop_id"]})
+    if not shop:
+        return None
+    base = datetime.fromisoformat(shop["subscription_expires_at"]) if shop.get("subscription_expires_at") else now_utc()
+    if base < now_utc():
+        base = now_utc()
+    new_exp = base + timedelta(days=30 * tx["months"])
+    await db.shops.update_one({"id": shop["id"]}, {"$set": {"subscription_expires_at": iso(new_exp), "is_active": True}})
+    await db.payment_transactions.update_one(
+        {"session_id": session_id, "payment_status": {"$ne": "paid"}},
+        {"$set": {"status": "completed", "payment_status": "paid", "updated_at": iso(now_utc())}}
+    )
+    await db.subscription_payments.insert_one({
+        "id": new_id(), "shop_id": shop["id"], "months": tx["months"],
+        "amount": tx["amount"], "session_id": session_id, "created_at": iso(now_utc()),
+    })
+    return await db.payment_transactions.find_one({"session_id": session_id})
+
+@api.get("/payments/status/{session_id}")
+async def payment_status(session_id: str):
+    tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+    if not tx:
+        raise HTTPException(404, "Transaction not found")
+    # Poll Stripe if still pending (webhook fallback)
+    if tx.get("payment_status") != "paid":
+        try:
+            stripe_checkout = StripeCheckout(
+                api_key=os.environ.get("STRIPE_API_KEY", "sk_test_emergent"),
+                webhook_url="",
+            )
+            status = await stripe_checkout.get_checkout_status(session_id)
+            if status.payment_status == "paid" or status.status == "complete":
+                await _apply_paid_session(session_id)
+                tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+        except Exception as e:
+            logger.warning(f"Stripe status poll failed: {e}")
+    return {"session_id": tx["session_id"], "status": tx["status"], "payment_status": tx["payment_status"], "amount": tx.get("amount"), "months": tx.get("months")}
+
+@api.post("/webhook/stripe")
+async def stripe_webhook(request: Request):
+    body = await request.body()
+    sig = request.headers.get("Stripe-Signature", "")
+    try:
+        stripe_checkout = StripeCheckout(
+            api_key=os.environ.get("STRIPE_API_KEY", "sk_test_emergent"),
+            webhook_url="",
+        )
+        result = await stripe_checkout.handle_webhook(body, sig)
+        if result and result.session_id and result.payment_status == "paid":
+            await _apply_paid_session(result.session_id)
+    except Exception as e:
+        logger.warning(f"webhook err: {e}")
     return {"ok": True}
 
 # ---------- Reports ----------

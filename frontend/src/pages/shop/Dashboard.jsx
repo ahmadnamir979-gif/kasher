@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, fmt, fmtInt } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { AlertCircle, TrendingUp, ShoppingBag, Users, Package } from "lucide-react";
+import { RenewBanner } from "@/pages/shop/Renew";
 
 function Stat({ icon: Icon, label, value, hint, color = "blue" }) {
     const bg = { blue: "bg-blue-50 text-blue-700", emerald: "bg-emerald-50 text-emerald-700", amber: "bg-amber-50 text-amber-700", rose: "bg-rose-50 text-rose-700", slate: "bg-slate-100 text-slate-700" }[color];
@@ -21,6 +22,7 @@ export default function Dashboard() {
     if (!d) return <div className="text-slate-500">جارٍ التحميل…</div>;
     return (
         <div className="space-y-6">
+            <RenewBanner />
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Stat icon={TrendingUp} label="مبيعات اليوم" value={fmt(d.today.total)} hint={`${fmtInt(d.today.count)} فاتورة`} color="emerald" />
                 <Stat icon={ShoppingBag} label="مبيعات ٧ أيام" value={fmt(d.week.total)} hint={`ربح ${fmt(d.week.profit)}`} color="blue" />

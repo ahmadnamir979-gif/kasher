@@ -1,6 +1,6 @@
 import { Routes, Route, useLocation, Navigate } from "react-router-dom";
 import AppShell, { SideLink } from "@/components/layout/AppShell";
-import { LayoutDashboard, ScanBarcode, Package, ShoppingCart, Truck, Users, UserCog, Receipt, BarChart3, Wallet } from "lucide-react";
+import { LayoutDashboard, ScanBarcode, Package, ShoppingCart, Truck, Users, UserCog, Receipt, BarChart3, Wallet, Clock } from "lucide-react";
 import POS from "@/pages/shop/POS";
 import Products from "@/pages/shop/Products";
 import Sales from "@/pages/shop/Sales";
@@ -11,6 +11,8 @@ import Employees from "@/pages/shop/Employees";
 import Expenses from "@/pages/shop/Expenses";
 import Reports from "@/pages/shop/Reports";
 import Dashboard from "@/pages/shop/Dashboard";
+import Shifts from "@/pages/shop/Shifts";
+import { RenewSuccess, RenewCancel } from "@/pages/shop/Renew";
 
 const nav = [
     { to: "/pos", icon: ScanBarcode, label: "نقطة البيع" },
@@ -22,6 +24,7 @@ const nav = [
     { to: "/suppliers", icon: Truck, label: "الموردين" },
     { to: "/employees", icon: UserCog, label: "الموظفين" },
     { to: "/expenses", icon: Wallet, label: "المصاريف" },
+    { to: "/shifts", icon: Clock, label: "الورديات" },
     { to: "/reports", icon: BarChart3, label: "التقارير" },
 ];
 
@@ -34,6 +37,8 @@ export default function ShopApp() {
     const { pathname } = useLocation();
     // POS is fullscreen without shell chrome
     if (pathname === "/pos") return <POS />;
+    if (pathname === "/renew/success") return <RenewSuccess />;
+    if (pathname === "/renew/cancel") return <RenewCancel />;
     const item = nav.find(n => n.to === pathname);
     return (
         <AppShell title={item?.label || ""} sidebar={<Sidebar />}>
@@ -46,6 +51,7 @@ export default function ShopApp() {
                 <Route path="suppliers" element={<Suppliers />} />
                 <Route path="employees" element={<Employees />} />
                 <Route path="expenses" element={<Expenses />} />
+                <Route path="shifts" element={<Shifts />} />
                 <Route path="reports" element={<Reports />} />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>

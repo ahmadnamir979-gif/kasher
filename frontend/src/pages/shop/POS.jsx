@@ -4,9 +4,11 @@ import { api, formatApiError, fmt } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Search, Trash2, Plus, Minus, Printer, Home, X, Store, LogOut, LayoutDashboard } from "lucide-react";
+import { Search, Trash2, Plus, Minus, Store, LogOut, LayoutDashboard, X, Printer, Package as PackageIcon } from "lucide-react";
+import { ReceiptPreview, printReceipt } from "@/components/Receipt";
+import { ShiftBadge, ShiftManager } from "@/components/ShiftManager";
 
 export default function POS() {
     const { user, logout } = useAuth();
@@ -17,16 +19,23 @@ export default function POS() {
     const [q, setQ] = useState("");
     const [cart, setCart] = useState([]);
     const [discount, setDiscount] = useState(0);
+    const [shift, setShift] = useState(null);
+    const [shiftDlg, setShiftDlg] = useState(false);
+    const [lastSale, setLastSale] = useState(null);
+    const [receiptOpen, setReceiptOpen] = useState(false);
     const searchRef = useRef(null);
 
+    const loadShift = async () => { try { const r = await api.get("/shifts/current"); setShift(r.data); } catch { setShift(null); } };
     useEffect(() => {
         api.get("/products").then(r => setProducts(r.data));
         api.get("/categories").then(r => setCategories(r.data));
+        loadShift();
     }, []);
 
     useEffect(() => {
         const h = (e) => {
             if (e.key === "F1") { e.preventDefault(); pay("cash"); }
+            if (e.key === "F2") { e.preventDefault(); pay("card"); }
             if (e.ctrlKey && e.key.toLowerCase() === "f") { e.preventDefault(); searchRef.current?.focus(); }
             if (e.key === "Escape") { setCart([]); }
         };
@@ -64,14 +73,17 @@ export default function POS() {
 
     const pay = async (method) => {
         if (cart.length === 0) return toast.error("السلة فارغة");
+        if (!shift) { toast.error("يرجى فتح وردية أولاً"); setShiftDlg(true); return; }
         try {
-            await api.post("/sales", {
+            const { data } = await api.post("/sales", {
                 items: cart, discount, paid: total, payment_method: method,
                 customer_name: "زبون نقدي", is_return: false,
             });
             toast.success(`تم البيع بمبلغ ${fmt(total)}`);
+            setLastSale(data);
+            setReceiptOpen(true);
             setCart([]); setDiscount(0);
-            const { data } = await api.get("/products"); setProducts(data);
+            const { data: pd } = await api.get("/products"); setProducts(pd);
         } catch (e) { toast.error(formatApiError(e)); }
     };
 
@@ -84,13 +96,14 @@ export default function POS() {
                 <div className="flex items-center gap-2"><Store className="w-5 h-5 text-blue-400" /><span className="font-semibold">{user?.shop?.name || "نقطة البيع"}</span></div>
                 <div className="text-xs text-slate-400">/ {user?.name}</div>
                 <div className="flex-1" />
-                <div className="text-xs text-slate-300 tabular-nums">{new Date().toLocaleString("ar-EG")}</div>
+                <ShiftBadge shift={shift} onOpen={() => setShiftDlg(true)} onClose={() => setShiftDlg(true)} />
+                <div className="text-xs text-slate-300 tabular-nums">{new Date().toLocaleTimeString("ar-EG")}</div>
                 <Button size="sm" variant="ghost" onClick={() => nav("/dashboard")} className="text-white hover:bg-white/10 gap-2"><LayoutDashboard className="w-4 h-4" /> اللوحة</Button>
                 <Button size="sm" variant="ghost" onClick={async () => { await logout(); nav("/login"); }} data-testid="pos-logout-btn" className="text-white hover:bg-white/10 gap-2"><LogOut className="w-4 h-4" /> خروج</Button>
             </div>
 
             <div className="flex-1 flex overflow-hidden">
-                {/* Cart on left (RTL: left visually) */}
+                {/* Cart on left */}
                 <div className="w-[380px] shrink-0 bg-white border-l border-zinc-200 flex flex-col">
                     <div className="p-4 border-b border-zinc-200">
                         <div className="text-xs text-slate-500 mb-1">الفاتورة الحالية</div>
@@ -155,7 +168,7 @@ export default function POS() {
                     <div className="flex-1 overflow-y-auto p-4">
                         {filtered.length === 0 ? (
                             <div className="text-center text-slate-400 pt-20">
-                                <Package className="w-16 h-16 mx-auto mb-3 opacity-30" />
+                                <PackageIcon className="w-16 h-16 mx-auto mb-3 opacity-30" />
                                 <p>لا توجد منتجات. أضف منتجات من قسم "المنتجات والمخزون"</p>
                             </div>
                         ) : (
@@ -176,8 +189,24 @@ export default function POS() {
                     </div>
                 </div>
             </div>
+
+            <ShiftManager open={shiftDlg} onOpenChange={setShiftDlg} shift={shift} onDone={loadShift} />
+
+            {/* Receipt modal */}
+            <Dialog open={receiptOpen} onOpenChange={setReceiptOpen}>
+                <DialogContent dir="rtl" className="bg-white max-w-md">
+                    <DialogHeader><DialogTitle>تمّ حفظ الفاتورة</DialogTitle></DialogHeader>
+                    <div className="flex justify-center bg-zinc-100 p-4 rounded">
+                        <div id="receipt-print-area">
+                            <ReceiptPreview shop={user?.shop} sale={lastSale} cashierName={user?.name} />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setReceiptOpen(false)} data-testid="receipt-close-btn">إغلاق</Button>
+                        <Button onClick={() => printReceipt("receipt-print-area")} data-testid="print-receipt-btn" className="bg-slate-900 hover:bg-slate-800 text-white gap-2"><Printer className="w-4 h-4" /> طباعة</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
-
-function Package(props) { return <svg {...props} fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M21 8l-9-5-9 5 9 5 9-5zm0 8l-9 5-9-5m18-4l-9 5-9-5"/></svg>; }
