@@ -132,7 +132,7 @@ export default function POS() {
             if (match) { addToCart(match); setQ(""); return; }
             // Unknown barcode/name — offer quick add
             if (/^\d{6,}$/.test(t)) {
-                setQuickAdd({ barcode: t, name: "", sale_price: "", cost_price: "", stock: 1 });
+                setQuickAdd({ barcode: t, name: "", category_id: "", sale_price: "", cost_price: "", stock: 1 });
                 setQ("");
             }
         }
@@ -144,6 +144,7 @@ export default function POS() {
             const { data } = await api.post("/products", {
                 name: quickAdd.name.trim(),
                 barcode: quickAdd.barcode,
+                category_id: quickAdd.category_id || null,
                 warehouse_id: warehouseId || null,
                 cost_price: +quickAdd.cost_price || 0,
                 sale_price: +quickAdd.sale_price,
@@ -559,6 +560,23 @@ export default function POS() {
                             <div>
                                 <label className="text-sm font-medium">اسم المنتج *</label>
                                 <Input value={quickAdd.name} onChange={(e) => setQuickAdd(q => ({...q, name: e.target.value}))} data-testid="quick-add-name" autoFocus placeholder="مثال: علبة تونا 200غ" />
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium">الفئة</label>
+                                <select value={quickAdd.category_id} onChange={(e) => setQuickAdd(q => ({...q, category_id: e.target.value}))}
+                                    data-testid="quick-add-category"
+                                    className="w-full h-10 border border-zinc-200 rounded-md px-3 mt-1 bg-white text-sm">
+                                    <option value="">— بدون فئة —</option>
+                                    {categories.map(c => (
+                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                    ))}
+                                </select>
+                                {quickAdd.category_id && (
+                                    <div className="flex items-center gap-2 mt-1.5 text-xs">
+                                        <span className="w-3 h-3 rounded" style={{ backgroundColor: categories.find(c => c.id === quickAdd.category_id)?.color || "#3b82f6" }} />
+                                        <span className="text-slate-600">{categories.find(c => c.id === quickAdd.category_id)?.name}</span>
+                                    </div>
+                                )}
                             </div>
                             <div className="grid grid-cols-3 gap-2">
                                 <div>
