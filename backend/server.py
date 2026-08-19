@@ -20,6 +20,9 @@ from openpyxl import load_workbook, Workbook
 from emergentintegrations.payments.stripe.checkout import (
     StripeCheckout, CheckoutSessionRequest
 )
+from emergentintegrations.llm.chat import LlmChat, UserMessage
+import json as _json
+import csv as _csv
 
 # ---------- Setup ----------
 mongo_url = os.environ['MONGO_URL']
@@ -1077,6 +1080,240 @@ async def stripe_webhook(request: Request):
     except Exception as e:
         logger.warning(f"webhook err: {e}")
     return {"ok": True}
+
+# ---------- Data Migration Wizard (from old cashier systems) ----------
+MIGRATION_SCHEMAS = {
+    "products": {
+        "fields": {
+            "name": "اسم المنتج (إجباري)",
+            "barcode": "الباركود",
+            "category": "الفئة/التصنيف",
+            "unit": "وحدة القياس",
+            "cost_price": "سعر التكلفة",
+            "sale_price": "سعر البيع (إجباري)",
+            "stock": "الكمية/الرصيد المخزني",
+            "min_stock": "الحد الأدنى",
+            "tax_rate": "نسبة الضريبة",
+        },
+        "required": ["name", "sale_price"],
+    },
+    "customers": {
+        "fields": {
+            "name": "الاسم (إجباري)",
+            "phone": "الهاتف",
+            "email": "البريد الإلكتروني",
+            "address": "العنوان",
+            "opening_balance": "الرصيد الافتتاحي",
+        },
+        "required": ["name"],
+    },
+    "suppliers": {
+        "fields": {
+            "name": "الاسم (إجباري)",
+            "phone": "الهاتف",
+            "email": "البريد الإلكتروني",
+            "address": "العنوان",
+            "opening_balance": "الرصيد الافتتاحي",
+        },
+        "required": ["name"],
+    },
+}
+
+def _parse_upload(filename: str, content: bytes):
+    """Return (headers: list[str], rows: list[list])."""
+    fn = filename.lower()
+    if fn.endswith(".csv"):
+        text = None
+        for enc in ("utf-8-sig", "utf-8", "cp1256", "windows-1256", "latin-1"):
+            try:
+                text = content.decode(enc); break
+            except Exception:
+                continue
+        if text is None:
+            raise HTTPException(400, "تعذّر قراءة ملف CSV — تحقق من الترميز")
+        reader = _csv.reader(io.StringIO(text))
+        all_rows = list(reader)
+        if not all_rows:
+            raise HTTPException(400, "الملف فارغ")
+        return [str(h or "").strip() for h in all_rows[0]], all_rows[1:]
+    if fn.endswith((".xlsx", ".xls")):
+        try:
+            wb = load_workbook(io.BytesIO(content), data_only=True)
+            ws = wb.active
+        except Exception as e:
+            raise HTTPException(400, f"ملف Excel غير صالح: {e}")
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows:
+            raise HTTPException(400, "الملف فارغ")
+        headers = [str(h).strip() if h is not None else "" for h in rows[0]]
+        return headers, [list(r) for r in rows[1:]]
+    raise HTTPException(400, "الصيغة غير مدعومة — استخدم .xlsx أو .csv")
+
+async def _ai_map_columns(headers: list, sample_rows: list, entity: str) -> dict:
+    """Use LLM to map source columns to target schema keys."""
+    schema = MIGRATION_SCHEMAS[entity]
+    target_desc = "\n".join([f"- `{k}` : {v}" for k, v in schema["fields"].items()])
+    sample_text = "\n".join([" | ".join(str(c) if c is not None else "" for c in r[:len(headers)]) for r in sample_rows[:3]])
+    prompt = f"""أنت مساعد لنقل بيانات من أنظمة كاشير عربية إلى نظام موحّد.
+Target schema keys for entity `{entity}`:
+{target_desc}
+
+Source columns (from an old system's export, in any language/naming):
+{headers}
+
+Sample data rows:
+{sample_text}
+
+Task: Map each source column to ONE target schema key from above (or "ignore" if not relevant).
+Return ONLY a valid JSON object like: {{"<source column>": "<target_key or ignore>", ...}}
+Do NOT add any explanation, code fences, or extra text — just raw JSON.
+"""
+    try:
+        chat = LlmChat(
+            api_key=os.environ.get("EMERGENT_LLM_KEY", ""),
+            session_id=f"migration-{new_id()}",
+            system_message="You are a strict JSON-only data migration assistant. Reply with JSON only."
+        ).with_model("openai", "gpt-4o-mini")
+        resp = await chat.send_message(UserMessage(text=prompt))
+        text = str(resp).strip()
+        # Strip code fences if any
+        if text.startswith("```"):
+            text = text.strip("`")
+            if text.startswith("json"): text = text[4:]
+            text = text.strip()
+        mapping = _json.loads(text)
+        # Sanitize: only keep known target keys
+        allowed = set(schema["fields"].keys()) | {"ignore"}
+        return {str(k): (v if v in allowed else "ignore") for k, v in mapping.items() if k}
+    except Exception as e:
+        logger.warning(f"AI mapping failed: {e}; falling back to heuristic")
+        # Heuristic fallback
+        alias = {
+            "name": ["name", "الاسم", "اسم", "product", "المنتج", "الصنف", "عنوان", "title"],
+            "barcode": ["barcode", "الباركود", "رمز", "كود", "code", "sku", "ean"],
+            "category": ["category", "الفئة", "تصنيف", "مجموعة", "قسم"],
+            "unit": ["unit", "وحدة", "الوحدة"],
+            "cost_price": ["cost", "تكلفة", "التكلفة", "شراء", "cost_price"],
+            "sale_price": ["price", "سعر", "بيع", "sale", "sale_price", "selling"],
+            "stock": ["stock", "الكمية", "كمية", "مخزون", "الرصيد", "qty", "quantity"],
+            "min_stock": ["min", "أدنى", "الحد الأدنى", "minimum"],
+            "tax_rate": ["tax", "ضريبة", "vat"],
+            "phone": ["phone", "هاتف", "الهاتف", "جوال", "موبايل", "mobile"],
+            "email": ["email", "بريد", "mail"],
+            "address": ["address", "عنوان", "العنوان"],
+            "opening_balance": ["balance", "رصيد", "الرصيد"],
+        }
+        out = {}
+        for h in headers:
+            hl = h.lower().strip()
+            match = "ignore"
+            for key, syns in alias.items():
+                if key not in schema["fields"]: continue
+                if any(s.lower() in hl for s in syns):
+                    match = key; break
+            out[h] = match
+        return out
+
+@api.get("/migration/schemas")
+async def migration_schemas(_=Depends(require_shop_user)):
+    return MIGRATION_SCHEMAS
+
+@api.post("/migration/analyze")
+async def migration_analyze(entity: str, file: UploadFile = File(...), user=Depends(require_shop_user)):
+    if entity not in MIGRATION_SCHEMAS:
+        raise HTTPException(400, "نوع بيانات غير مدعوم")
+    content = await file.read()
+    headers, rows = _parse_upload(file.filename or "", content)
+    headers = [h for h in headers if h]
+    if not headers:
+        raise HTTPException(400, "لم يتم العثور على أعمدة")
+    mapping = await _ai_map_columns(headers, rows[:5], entity)
+    return {
+        "entity": entity,
+        "headers": headers,
+        "row_count": len(rows),
+        "sample_rows": [dict(zip(headers, r)) for r in rows[:5]],
+        "suggested_mapping": mapping,
+        "schema": MIGRATION_SCHEMAS[entity],
+    }
+
+@api.post("/migration/import")
+async def migration_import(entity: str, mapping: str, file: UploadFile = File(...), user=Depends(require_shop_user)):
+    if entity not in MIGRATION_SCHEMAS:
+        raise HTTPException(400, "نوع بيانات غير مدعوم")
+    try:
+        col_map = _json.loads(mapping)
+    except Exception:
+        raise HTTPException(400, "mapping JSON غير صالح")
+    schema = MIGRATION_SCHEMAS[entity]
+    for req in schema["required"]:
+        if req not in col_map.values():
+            raise HTTPException(400, f"الحقل الإجباري '{schema['fields'][req]}' غير مربوط بعمود")
+    content = await file.read()
+    headers, rows = _parse_upload(file.filename or "", content)
+    # Build index by header -> target
+    header_to_target = {h: col_map.get(h, "ignore") for h in headers}
+    imported = 0
+    errors = []
+    default_wh = None
+    if entity == "products":
+        default_wh = await _ensure_default_warehouse(sid(user))
+        cats = await db.categories.find({"shop_id": sid(user)}, {"_id": 0}).to_list(1000)
+        cat_by_name = {c["name"]: c["id"] for c in cats}
+    for ridx, row in enumerate(rows, start=2):
+        try:
+            record = {}
+            for i, h in enumerate(headers):
+                target = header_to_target.get(h, "ignore")
+                if target == "ignore": continue
+                val = row[i] if i < len(row) else None
+                if val is None or (isinstance(val, str) and not val.strip()):
+                    continue
+                record[target] = val
+            # Skip rows missing required
+            if any(k not in record for k in schema["required"]):
+                continue
+            if entity == "products":
+                cat_id = None
+                if record.get("category"):
+                    cname = str(record["category"]).strip()
+                    if cname in cat_by_name:
+                        cat_id = cat_by_name[cname]
+                    else:
+                        new_cat = {"id": new_id(), "shop_id": sid(user), "name": cname, "color": "#3b82f6", "created_at": iso(now_utc())}
+                        await db.categories.insert_one(new_cat)
+                        cat_by_name[cname] = new_cat["id"]; cat_id = new_cat["id"]
+                doc = {
+                    "id": new_id(), "shop_id": sid(user),
+                    "name": str(record["name"]).strip(),
+                    "barcode": (str(record["barcode"]).strip() if record.get("barcode") else _gen_barcode()),
+                    "category_id": cat_id,
+                    "warehouse_id": default_wh,
+                    "unit": str(record.get("unit") or "قطعة").strip(),
+                    "cost_price": float(record.get("cost_price") or 0),
+                    "sale_price": float(record["sale_price"]),
+                    "stock": float(record.get("stock") or 0),
+                    "min_stock": float(record.get("min_stock") or 0),
+                    "tax_rate": float(record.get("tax_rate") or 0),
+                    "is_active": True, "created_at": iso(now_utc()),
+                }
+                await db.products.insert_one(doc)
+            elif entity in ("customers", "suppliers"):
+                bal = float(record.get("opening_balance") or 0)
+                doc = {
+                    "id": new_id(), "shop_id": sid(user),
+                    "name": str(record["name"]).strip(),
+                    "phone": str(record.get("phone") or ""),
+                    "email": str(record.get("email") or ""),
+                    "address": str(record.get("address") or ""),
+                    "opening_balance": bal, "balance": bal,
+                    "created_at": iso(now_utc()),
+                }
+                await db[entity].insert_one(doc)
+            imported += 1
+        except Exception as e:
+            errors.append(f"سطر {ridx}: {e}")
+    return {"entity": entity, "imported": imported, "errors": errors[:20], "total_rows": len(rows)}
 
 # ---------- Reports ----------
 @api.get("/reports/dashboard")

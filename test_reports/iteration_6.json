@@ -1,0 +1,23 @@
+{
+  "summary": "Iteration 6 (Data Migration Wizard) tested end-to-end. Backend: 8/8 pytest cases pass covering schemas, analyze (Arabic CSV with AI mapping, .txt reject, unknown entity), and import (products with auto-barcode + auto-category, missing required field 400 with Arabic message, customers, suppliers). Frontend: full 4-step wizard flow via Playwright — nav item visible, 3 entity tiles, CSV upload, LLM-backed analyze returns mapping ('اسم الصنف'→name, 'سعر البيع'→sale_price), import completes and success card shows counters. Required-missing validation properly disables 'بدء الاستيراد' button.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration6.py",
+    "/app/test_reports/pytest/iter6.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is >1400 lines — should be modularized (routers/, services/) for maintainability.",
+    "/migration/import accepts mapping as a query-string parameter which limits URL length; consider moving to multipart form field for robustness with very large mapping dicts.",
+    "Bulk insert loop uses one insert_one per row — could use insert_many for perf on large files.",
+    "_ai_map_columns falls back to heuristic silently on any LLM failure (good), but there is no telemetry/flag indicating whether AI or heuristic produced the mapping — surface this to UI for transparency."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration6.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@pos.com / Admin@1234 (super); shop-owner test accounts auto-created per run with TEST_it6_/TEST_ui6_ prefixes.",
+  "seed_data_creation": "Test shop + owner created via /api/admin/shops for each run; products/customers/suppliers imported via wizard.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Migration endpoints require shop-user (require_shop_user), not super_admin. Create a shop via /api/admin/shops then login as owner. LLM analyze can take 2-5s; heuristic fallback covers Arabic column names correctly for the standard header set used in tests."
+}
