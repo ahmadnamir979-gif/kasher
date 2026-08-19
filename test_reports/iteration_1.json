@@ -1,0 +1,41 @@
+{
+  "summary": "First-finish smoke test. Backend and frontend for Arabic RTL POS SaaS. Super admin auth, multi-tenant shop CRUD, subscription lifecycle (create/extend/disable/expire), products/sales/purchases/customers/suppliers/expenses/employees CRUD, reports, tenant isolation, and role guards all verified. Frontend login redirects (super_admin -> /admin, shop_owner -> /pos), dashboard renders, POS add-to-cart and pay-cash flow succeed end-to-end.",
+  "tested_scope": ["backend", "frontend", "auth", "integration"],
+  "passed": [
+    "POST /api/auth/login (admin@pos.com) -> 200 with token; role super_admin",
+    "GET /api/auth/me returns super_admin",
+    "GET /api/admin/stats returns totals (total_shops, active_shops, etc.)",
+    "POST /api/admin/shops creates shop + owner (returns shop_id)",
+    "GET /api/admin/shops lists shops with owner + sales_total attached",
+    "POST /api/admin/shops/{id}/extend {months:12} updates subscription_expires_at (200)",
+    "PATCH /api/admin/shops/{id} {is_active:false} disables shop; subsequent /api/products by owner returns 403 with 'الاشتراك موقوف'; login is blocked with 'المحل موقوف'",
+    "Re-enabling shop restores access",
+    "Super admin blocked from /api/products with 403 'Shop user required'",
+    "Shop owner blocked from /api/admin/stats with 403 'Super admin only'",
+    "Categories, Products, Customers, Suppliers, Expenses, Employees CRUD all 200",
+    "Employee login works and can list products",
+    "POST /api/sales: invoice_no increments (1 then 2 per shop), profit computed, stock decreased 50 -> 46 after qty=3+qty=1",
+    "POST /api/purchases: stock increased 46 -> 66 and cost_price updated from 5 to 6",
+    "GET /api/reports/dashboard returns today/week/month, top_products, daily_sales, low_stock, products_count",
+    "GET /api/reports/profit-loss?days=30 returns revenue, cost_of_goods, gross_profit, expenses, net_profit",
+    "Tenant isolation: Shop B sees empty products/sales even after Shop A has data",
+    "Subscription expiration: shop created with subscription_months=0 -> owner can login (200) but /api/products returns 403 'انتهى الاشتراك'",
+    "Frontend /login loads with Arabic RTL and data-testids present",
+    "Super admin UI: redirected to /admin, stats cards + shops table render with 5 shops",
+    "Shop POS UI: redirected to /pos, pos-search-input visible, product tile click populates cart-item-0, pay-cash-btn triggers success toast (sale created)"
+  ],
+  "failed": [
+    {
+      "area": "Backend subscription check robustness",
+      "issue": "GET /api/products returns 500 'fromisoformat: argument must be str' if subscription_expires_at in Mongo is a native Date/datetime rather than ISO string. Not reachable via app API (app writes ISO strings), only via direct DB update or if any writer stores datetime. Recommend using isinstance check / normalize before fromisoformat in require_shop_user.",
+      "evidence": "backend log: 'TypeError: fromisoformat: argument must be str' after setting subscription_expires_at via mongosh new Date(); HTTP 500",
+      "priority": "LOW"
+    }
+  ],
+  "action_items": [
+    "Optional hardening: in require_shop_user, handle subscription_expires_at when it's already a datetime (isinstance check) to avoid 500s from any code path that stores it as BSON date."
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "retest_needed": false,
+  "full_testing_deferred": true
+}

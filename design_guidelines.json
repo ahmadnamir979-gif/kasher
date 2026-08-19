@@ -1,0 +1,105 @@
+{
+  "theme": "light",
+  "direction": "rtl",
+  "language": "ar",
+  "typography": {
+    "primary_font": "IBM Plex Sans Arabic",
+    "fallback_font": "sans-serif",
+    "numbers_font": "JetBrains Mono",
+    "headings": {
+      "h1": "text-3xl font-bold tracking-tight text-slate-900",
+      "h2": "text-2xl font-semibold tracking-tight text-slate-800",
+      "h3": "text-xl font-medium text-slate-800"
+    },
+    "body": "text-sm text-slate-600 leading-relaxed",
+    "data_tables": "text-sm tabular-nums text-slate-700",
+    "rules": [
+      "No generic Inter font. 'IBM Plex Sans Arabic' is mandatory for a professional, trustworthy financial appearance.",
+      "Use 'tabular-nums' utility strictly on all accounting tables, prices, and stats to align digits vertically.",
+      "Heading hierarchy must not jump more than 2 Tailwind scales."
+    ]
+  },
+  "colors": {
+    "archetype": "SWISS & HIGH-CONTRAST (Modified for Financial/POS)",
+    "background": "bg-zinc-50",
+    "surface": "bg-white",
+    "primary": "bg-slate-900 text-white",
+    "primary_hover": "hover:bg-slate-800",
+    "accent": "bg-blue-600 text-white",
+    "accent_hover": "hover:bg-blue-700",
+    "success": "bg-emerald-600 text-white",
+    "danger": "bg-rose-600 text-white",
+    "warning": "bg-amber-500 text-slate-900",
+    "border": "border-zinc-200",
+    "text": {
+      "main": "text-slate-900",
+      "muted": "text-slate-500",
+      "inverse": "text-white",
+      "accent": "text-blue-600"
+    },
+    "forbidden": [
+      "#7351B7",
+      "#1B93A4",
+      "generic gradients",
+      "pure transparent backgrounds on overlapping surfaces"
+    ]
+  },
+  "visual_enhancers": {
+    "borders": "1px solid border-zinc-200. Used extensively for dense grid layouts to clearly separate data.",
+    "shadows": "Minimalist. shadow-sm for cards. shadow-md for dropdowns/modals. Avoid heavy ambient shadows to maintain a clean clinical look.",
+    "radius": "rounded-md (4px) universally. Avoid excessive roundness (like rounded-xl or full) to maintain professional density.",
+    "surfaces": "Flat Solid only. No Glassmorphism for financial data to prevent visual refraction."
+  },
+  "layouts": {
+    "general": {
+      "sidebar_nav": "Right-aligned in RTL mode (w-64). Solid white background, 1px border on the left (border-l).",
+      "topbar": "Sticky h-16, white bg, solid bottom border. Contains user profile, shift status, and branch name."
+    },
+    "blueprints": {
+      "super_admin_dashboard": {
+        "structure": "Sidebar (Right) + Topbar + Main Content Area",
+        "content": "Bento Grid (High Density). Top row: 4 stat cards (Total Shops, Active Subs, Revenue, etc.). Middle row: Wide Chart (Subscriptions over time) + Top Shops List. Bottom: Dense data table of all tenants.",
+        "spacing": "Tight gaps (gap-4 or gap-6) to maximize data visibility."
+      },
+      "shop_pos_screen": {
+        "structure": "Full screen, no sidebar. Minimal top header.",
+        "content": "Split layout. Right side (70%): Product Grid with category tabs above it. Left side (30%): Current Cart / Invoice. (Complies with RTL reading direction & user preference).",
+        "cart_details": "Left side fixed height. Top: Customer selection. Middle: Scrollable list of cart items (Name, Qty (+/-), Price). Bottom: Total, Discount, Tax, and large Checkout action buttons (Cash, Card, Hold).",
+        "keyboard_shortcuts": "Must display shortcut keys (e.g., [F1] for Cash, [Ctrl+Z] for Undo) inside the buttons as small overlines."
+      },
+      "accounting_data_tables": {
+        "structure": "Standard Dashboard layout with Sidebar and Topbar.",
+        "table_rules": "Dense padding (py-2 px-3), stripped rows (odd:bg-zinc-50/50), sticky headers, right-aligned text, left-aligned numbers."
+      }
+    }
+  },
+  "motion": {
+    "buttons": "transition-colors duration-200 ease-in-out",
+    "modals": "Fade in and slight slide-up (translate-y-2 to 0)",
+    "lists": "Extremely fast staggered fade-in for product grid items (under 150ms). Do not make cashiers wait for animations.",
+    "rules": "Disable all slow animations on the POS screen. Speed is critical for cashiers."
+  },
+  "accessibility_and_testing": {
+    "contrast": "Ensure all text meets APCA guidelines. Minimum 4.5:1 for normal text.",
+    "keyboard": "Full keyboard navigability for the POS screen. Up/Down arrows for cart navigation.",
+    "rtl": "Use HTML dir='rtl'. Use Tailwind logical properties (e.g., ms-4, pe-2, border-s) instead of physical (ml-4, pr-2, border-l).",
+    "testing": "All interactive elements MUST have data-testid. Examples: data-testid='pos-product-item', data-testid='checkout-button', data-testid='tenant-row'."
+  },
+  "component_instructions": {
+    "framework": "React JS (.js files). Use Tailwind CSS. Shadcn UI primitives customized for dense data.",
+    "data_tables": "Build robust tabular data views. Do not use generic card layouts for accounting data.",
+    "forms": "Use Shadcn Form/Input components. Labels must be on the right (RTL alignment).",
+    "dropdowns": "Must have solid white background (bg-white) and a border. No transparent backgrounds."
+  },
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "You are building a B2B SaaS POS and Accounting system in Arabic (RTL).",
+    "Always apply dir='rtl' and lang='ar' to the main HTML/root container.",
+    "Avoid AI slop: no purple gradients, no generic Inter font, no arbitrary centered text (align text based on RTL natural flow, usually right-aligned).",
+    "Implement keyboard shortcuts visually on the POS screen (e.g., F1 for Pay, Ctrl+F for Search).",
+    "Use solid backgrounds for all overlapping elements (modals, dropdowns, sticky headers). Never use transparent/glass for financial apps.",
+    "Use 'tabular-nums' for all prices, quantities, and accounting data.",
+    "Every button and input MUST have a 'data-testid' attribute for testing.",
+    "Spacing should be tight and dense (Shadcn default or smaller) because accountants and cashiers need to see maximum data on one screen.",
+    "Do not use placeholder image URLs. Since this is a POS, products should use generic colored box avatars with the first letter of the product if an image is missing."
+  ]
+}
