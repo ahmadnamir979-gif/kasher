@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { api, fmt, fmtInt } from "@/lib/api";
+import { api, fmt, fmtInt, formatApiError } from "@/lib/api";
 import { Card } from "@/components/ui/card";
-import { AlertCircle, TrendingUp, ShoppingBag, Users, Package } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { AlertCircle, TrendingUp, ShoppingBag, Users, Package, Sparkles, Loader2, Trash2 } from "lucide-react";
 import { RenewBanner } from "@/pages/shop/Renew";
+import { toast } from "sonner";
 
 function Stat({ icon: Icon, label, value, hint, color = "blue" }) {
     const bg = { blue: "bg-blue-50 text-blue-700", emerald: "bg-emerald-50 text-emerald-700", amber: "bg-amber-50 text-amber-700", rose: "bg-rose-50 text-rose-700", slate: "bg-slate-100 text-slate-700" }[color];
@@ -18,11 +20,53 @@ function Stat({ icon: Icon, label, value, hint, color = "blue" }) {
 
 export default function Dashboard() {
     const [d, setD] = useState(null);
-    useEffect(() => { api.get("/reports/dashboard").then(r => setD(r.data)); }, []);
+    const [seeding, setSeeding] = useState(false);
+    const load = () => api.get("/reports/dashboard").then(r => setD(r.data));
+    useEffect(() => { load(); }, []);
+
+    const seedDemo = async () => {
+        setSeeding(true);
+        try {
+            const { data } = await api.post("/dev/seed-demo");
+            toast.success(`تمّت إضافة ${data.products} منتج + ${data.categories} فئة + ${data.customers} زبون + ${data.suppliers} مورد`);
+            load();
+        } catch (e) { toast.error(formatApiError(e)); }
+        setSeeding(false);
+    };
+    const clearDemo = async () => {
+        if (!window.confirm("حذف كل البيانات التجريبية؟")) return;
+        setSeeding(true);
+        try {
+            const { data } = await api.delete("/dev/seed-demo");
+            toast.success(`تمّ حذف ${data.deleted.products} منتج تجريبي`);
+            load();
+        } catch (e) { toast.error(formatApiError(e)); }
+        setSeeding(false);
+    };
+
     if (!d) return <div className="text-slate-500">جارٍ التحميل…</div>;
+    const isEmpty = (d.products_count || 0) < 3;
     return (
         <div className="space-y-6">
             <RenewBanner />
+            {isEmpty && (
+                <Card className="p-5 border-2 border-blue-200 bg-gradient-to-l from-blue-50 to-white flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-lg bg-blue-600 text-white grid place-items-center shrink-0"><Sparkles className="w-6 h-6" /></div>
+                    <div className="flex-1">
+                        <div className="font-bold text-slate-900">جرّب النظام ببيانات جاهزة</div>
+                        <div className="text-xs text-slate-600 mt-0.5">أضف 54 منتج + 8 فئات + عملاء وموردين بلمسة واحدة للاختبار الفوري.</div>
+                    </div>
+                    <Button onClick={seedDemo} disabled={seeding} className="bg-blue-600 hover:bg-blue-700 text-white gap-2" data-testid="seed-demo-btn">
+                        {seeding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                        {seeding ? "جارٍ التحميل…" : "أضف بيانات تجريبية"}
+                    </Button>
+                </Card>
+            )}
+            {!isEmpty && (
+                <div className="flex justify-end">
+                    <Button onClick={clearDemo} disabled={seeding} variant="outline" size="sm" className="text-rose-600 gap-1.5" data-testid="clear-demo-btn"><Trash2 className="w-3.5 h-3.5" /> حذف البيانات التجريبية</Button>
+                </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Stat icon={TrendingUp} label="مبيعات اليوم" value={fmt(d.today.total)} hint={`${fmtInt(d.today.count)} فاتورة`} color="emerald" />
                 <Stat icon={ShoppingBag} label="مبيعات ٧ أيام" value={fmt(d.week.total)} hint={`ربح ${fmt(d.week.profit)}`} color="blue" />

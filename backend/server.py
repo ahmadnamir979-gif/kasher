@@ -1081,6 +1081,151 @@ async def stripe_webhook(request: Request):
         logger.warning(f"webhook err: {e}")
     return {"ok": True}
 
+# ---------- Demo Data Seeder ----------
+DEMO_CATEGORIES = [
+    ("مواد غذائية", "#f59e0b"), ("مشروبات", "#3b82f6"),
+    ("ألبان وأجبان", "#10b981"), ("مواد تنظيف", "#8b5cf6"),
+    ("عناية شخصية", "#ec4899"), ("خضار وفواكه", "#22c55e"),
+    ("خبز ومعجنات", "#f97316"), ("حلويات وشوكولاتة", "#ef4444"),
+]
+DEMO_PRODUCTS = [
+    # (name, category_idx, cost, sale, stock, unit)
+    ("أرز مصري 5 كغ", 0, 22, 32, 60, "كيس"),
+    ("سكر أبيض 1 كغ", 0, 3.5, 5, 200, "كيس"),
+    ("ملح طعام 1 كغ", 0, 1.2, 2, 150, "كيس"),
+    ("زيت زيتون بكر 1 لتر", 0, 25, 38, 40, "زجاجة"),
+    ("زيت ذرة 1.8 لتر", 0, 12, 18, 80, "زجاجة"),
+    ("عدس أحمر 1 كغ", 0, 6, 9, 90, "كيس"),
+    ("فاصولياء بيضاء", 0, 5, 8, 70, "كيس"),
+    ("معكرونة سباغيتي 500غ", 0, 3, 5, 250, "علبة"),
+    ("معكرونة قلم 500غ", 0, 3, 5, 200, "علبة"),
+    ("طحين قمح فاخر 5 كغ", 0, 15, 22, 55, "كيس"),
+    ("علبة تونا بالزيت 200غ", 0, 4, 7, 180, "علبة"),
+    ("معجون طماطم 400غ", 0, 3, 5, 150, "علبة"),
+    ("عصير برتقال 1 لتر", 1, 4, 6.5, 90, "علبة"),
+    ("عصير تفاح 1 لتر", 1, 4, 6.5, 85, "علبة"),
+    ("كوكاكولا 2 لتر", 1, 5, 8, 120, "زجاجة"),
+    ("سبرايت 2 لتر", 1, 5, 8, 100, "زجاجة"),
+    ("ماء معدني 1.5 لتر", 1, 1.5, 2.5, 300, "زجاجة"),
+    ("شاي أخضر أكياس 25", 1, 6, 10, 70, "علبة"),
+    ("نسكافيه 200غ", 1, 25, 38, 45, "علبة"),
+    ("قهوة تركية 250غ", 1, 12, 18, 60, "علبة"),
+    ("حليب طازج 1 لتر", 2, 3.5, 5.5, 80, "علبة"),
+    ("لبن رائب 500غ", 2, 3, 4.5, 70, "علبة"),
+    ("لبنة 500غ", 2, 8, 12, 55, "علبة"),
+    ("جبنة بيضاء 500غ", 2, 15, 22, 40, "علبة"),
+    ("جبنة صفراء شرائح", 2, 12, 18, 50, "علبة"),
+    ("بيض طبق 30 حبة", 2, 15, 22, 65, "طبق"),
+    ("زبدة طبيعية 200غ", 2, 10, 15, 45, "علبة"),
+    ("منظف أرضيات 2 لتر", 3, 8, 13, 65, "عبوة"),
+    ("مسحوق غسيل 3 كغ", 3, 20, 30, 35, "عبوة"),
+    ("سائل جلي 750مل", 3, 6, 10, 90, "عبوة"),
+    ("مبيّض كلور 2 لتر", 3, 4, 7, 80, "عبوة"),
+    ("منظف زجاج 500مل", 3, 5, 8, 60, "عبوة"),
+    ("مناديل حمام 12 لفة", 3, 15, 22, 50, "علبة"),
+    ("مناديل مطبخ 4 لفات", 3, 10, 15, 40, "علبة"),
+    ("أكياس قمامة كبيرة", 3, 8, 13, 70, "علبة"),
+    ("شامبو رأس وأكتاف 400مل", 4, 15, 22, 55, "عبوة"),
+    ("معجون أسنان كولجيت", 4, 5, 8, 90, "أنبوب"),
+    ("فرشاة أسنان", 4, 3, 5, 120, "قطعة"),
+    ("صابون استحمام دوف", 4, 4, 7, 100, "قطعة"),
+    ("مزيل عرق نيفيا", 4, 12, 18, 60, "علبة"),
+    ("كريم يدين 100مل", 4, 8, 13, 45, "أنبوب"),
+    ("طماطم 1 كغ", 5, 2, 4, 100, "كغ"),
+    ("خيار 1 كغ", 5, 2.5, 5, 80, "كغ"),
+    ("بطاطا 1 كغ", 5, 2, 4, 150, "كغ"),
+    ("بصل أحمر 1 كغ", 5, 2, 3.5, 120, "كغ"),
+    ("تفاح أحمر 1 كغ", 5, 5, 8, 90, "كغ"),
+    ("موز 1 كغ", 5, 4, 7, 100, "كغ"),
+    ("خبز طازج", 6, 1.5, 2.5, 200, "ربطة"),
+    ("كرواسون بالشوكولاتة", 6, 1.5, 3, 60, "قطعة"),
+    ("كعك بالسمسم", 6, 2, 3.5, 80, "قطعة"),
+    ("شوكولاتة كيتكات", 7, 2.5, 4, 150, "قطعة"),
+    ("شوكولاتة سنيكرز", 7, 2.5, 4, 140, "قطعة"),
+    ("علكة أوربت", 7, 1, 2, 200, "علبة"),
+    ("عسل طبيعي 500غ", 7, 30, 45, 30, "برطمان"),
+]
+DEMO_CUSTOMERS = [
+    ("أبو محمد", "0599111222", "الخليل"),
+    ("أم أحمد", "0599333444", "بيت لحم"),
+    ("سامر خالد", "0599555666", "رام الله"),
+    ("مطعم البركة", "0599777888", "نابلس"),
+    ("كافيه الروضة", "0599999000", "جنين"),
+    ("محل الصياد", "0598111222", "طولكرم"),
+    ("مقهى النجوم", "0598333444", "قلقيلية"),
+    ("مركز التوفير", "0598555666", "أريحا"),
+]
+DEMO_SUPPLIERS = [
+    ("شركة الأمين للمواد الغذائية", "022221111", "الخليل"),
+    ("مصنع الرحال للحلويات", "022222222", "نابلس"),
+    ("موزع بيبسي المحلي", "022223333", "رام الله"),
+    ("مزارع الوادي للخضار", "022224444", "أريحا"),
+    ("شركة السلام للألبان", "022225555", "الخليل"),
+]
+
+@api.post("/dev/seed-demo")
+async def seed_demo(user=Depends(require_shop_user)):
+    """Seed the current shop with a realistic supermarket demo dataset."""
+    shop_id = sid(user)
+    default_wh = await _ensure_default_warehouse(shop_id)
+    # Clean existing demo-tagged data (idempotent)
+    await db.products.delete_many({"shop_id": shop_id, "is_demo": True})
+    await db.categories.delete_many({"shop_id": shop_id, "is_demo": True})
+    await db.customers.delete_many({"shop_id": shop_id, "is_demo": True})
+    await db.suppliers.delete_many({"shop_id": shop_id, "is_demo": True})
+    # Categories
+    cat_ids = []
+    for name, color in DEMO_CATEGORIES:
+        cid = new_id()
+        await db.categories.insert_one({
+            "id": cid, "shop_id": shop_id, "name": name, "color": color,
+            "is_demo": True, "created_at": iso(now_utc()),
+        })
+        cat_ids.append(cid)
+    # Products
+    for name, ci, cost, sale, stock, unit in DEMO_PRODUCTS:
+        await db.products.insert_one({
+            "id": new_id(), "shop_id": shop_id,
+            "name": name, "barcode": _gen_barcode(),
+            "category_id": cat_ids[ci], "warehouse_id": default_wh,
+            "unit": unit, "cost_price": float(cost), "sale_price": float(sale),
+            "stock": float(stock), "min_stock": max(5.0, float(stock) * 0.15),
+            "tax_rate": 0, "is_active": True, "is_demo": True,
+            "created_at": iso(now_utc()),
+        })
+    # Customers
+    for name, phone, addr in DEMO_CUSTOMERS:
+        await db.customers.insert_one({
+            "id": new_id(), "shop_id": shop_id, "name": name,
+            "phone": phone, "email": "", "address": addr,
+            "opening_balance": 0, "balance": 0, "is_demo": True,
+            "created_at": iso(now_utc()),
+        })
+    # Suppliers
+    for name, phone, addr in DEMO_SUPPLIERS:
+        await db.suppliers.insert_one({
+            "id": new_id(), "shop_id": shop_id, "name": name,
+            "phone": phone, "email": "", "address": addr,
+            "opening_balance": 0, "balance": 0, "is_demo": True,
+            "created_at": iso(now_utc()),
+        })
+    return {
+        "ok": True,
+        "categories": len(DEMO_CATEGORIES),
+        "products": len(DEMO_PRODUCTS),
+        "customers": len(DEMO_CUSTOMERS),
+        "suppliers": len(DEMO_SUPPLIERS),
+    }
+
+@api.delete("/dev/seed-demo")
+async def clear_demo(user=Depends(require_shop_user)):
+    shop_id = sid(user)
+    r1 = await db.products.delete_many({"shop_id": shop_id, "is_demo": True})
+    r2 = await db.categories.delete_many({"shop_id": shop_id, "is_demo": True})
+    r3 = await db.customers.delete_many({"shop_id": shop_id, "is_demo": True})
+    r4 = await db.suppliers.delete_many({"shop_id": shop_id, "is_demo": True})
+    return {"ok": True, "deleted": {"products": r1.deleted_count, "categories": r2.deleted_count, "customers": r3.deleted_count, "suppliers": r4.deleted_count}}
+
 # ---------- Data Migration Wizard (from old cashier systems) ----------
 MIGRATION_SCHEMAS = {
     "products": {
