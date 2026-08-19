@@ -1117,7 +1117,36 @@ MIGRATION_SCHEMAS = {
         },
         "required": ["name"],
     },
+    "invoices": {
+        "fields": {
+            "invoice_no": "رقم الفاتورة",
+            "date": "التاريخ (YYYY-MM-DD)",
+            "customer_name": "اسم الزبون",
+            "total": "الإجمالي (إجباري)",
+            "payment_method": "طريقة الدفع (cash/card/credit)",
+            "notes": "ملاحظات",
+        },
+        "required": ["total"],
+    },
 }
+
+def _headers_fingerprint(headers: list) -> str:
+    """Stable order-independent fingerprint of source columns."""
+    import hashlib
+    canon = "|".join(sorted([str(h).strip().lower() for h in headers if h]))
+    return hashlib.sha1(canon.encode("utf-8")).hexdigest()[:16]
+
+def _parse_date(v):
+    if v is None: return None
+    if isinstance(v, datetime): return iso(v.replace(tzinfo=timezone.utc) if v.tzinfo is None else v)
+    s = str(v).strip()
+    if not s: return None
+    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y"):
+        try:
+            return iso(datetime.strptime(s[:19], fmt).replace(tzinfo=timezone.utc))
+        except Exception:
+            continue
+    return iso(now_utc())
 
 def _parse_upload(filename: str, content: bytes):
     """Return (headers: list[str], rows: list[list])."""
@@ -1227,13 +1256,26 @@ async def migration_analyze(entity: str, file: UploadFile = File(...), user=Depe
     headers = [h for h in headers if h]
     if not headers:
         raise HTTPException(400, "لم يتم العثور على أعمدة")
-    mapping = await _ai_map_columns(headers, rows[:5], entity)
+    fp = _headers_fingerprint(headers)
+    # Look for saved template with matching fingerprint
+    tpl = await db.migration_templates.find_one(
+        {"shop_id": sid(user), "entity": entity, "headers_fp": fp}, {"_id": 0}
+    )
+    if tpl:
+        mapping = tpl["mapping"]
+        source = "template"
+    else:
+        mapping = await _ai_map_columns(headers, rows[:5], entity)
+        source = "ai"
     return {
         "entity": entity,
         "headers": headers,
+        "headers_fp": fp,
         "row_count": len(rows),
         "sample_rows": [dict(zip(headers, r)) for r in rows[:5]],
         "suggested_mapping": mapping,
+        "mapping_source": source,
+        "template_name": tpl.get("name") if tpl else None,
         "schema": MIGRATION_SCHEMAS[entity],
     }
 
@@ -1253,6 +1295,8 @@ async def migration_import(entity: str, mapping: str, file: UploadFile = File(..
     headers, rows = _parse_upload(file.filename or "", content)
     # Build index by header -> target
     header_to_target = {h: col_map.get(h, "ignore") for h in headers}
+    batch_id = new_id()
+    created_ids = []  # list of {"col": collection_name, "id": doc_id}
     imported = 0
     errors = []
     default_wh = None
@@ -1296,8 +1340,10 @@ async def migration_import(entity: str, mapping: str, file: UploadFile = File(..
                     "min_stock": float(record.get("min_stock") or 0),
                     "tax_rate": float(record.get("tax_rate") or 0),
                     "is_active": True, "created_at": iso(now_utc()),
+                    "migration_batch_id": batch_id,
                 }
                 await db.products.insert_one(doc)
+                created_ids.append({"col": "products", "id": doc["id"]})
             elif entity in ("customers", "suppliers"):
                 bal = float(record.get("opening_balance") or 0)
                 doc = {
@@ -1308,12 +1354,140 @@ async def migration_import(entity: str, mapping: str, file: UploadFile = File(..
                     "address": str(record.get("address") or ""),
                     "opening_balance": bal, "balance": bal,
                     "created_at": iso(now_utc()),
+                    "migration_batch_id": batch_id,
                 }
                 await db[entity].insert_one(doc)
+                created_ids.append({"col": entity, "id": doc["id"]})
+            elif entity == "invoices":
+                total_val = float(record["total"])
+                pm = str(record.get("payment_method") or "cash").strip().lower()
+                if pm not in ("cash", "card", "credit"): pm = "cash"
+                doc = {
+                    "id": new_id(), "shop_id": sid(user),
+                    "invoice_no": int(record["invoice_no"]) if str(record.get("invoice_no") or "").strip().isdigit() else 0,
+                    "shift_id": None, "cashier_id": user["id"], "cashier_name": user.get("name",""),
+                    "customer_id": None,
+                    "customer_name": str(record.get("customer_name") or "زبون نقدي"),
+                    "items": [], "subtotal": total_val, "tax": 0, "discount": 0,
+                    "total": total_val, "cost_total": 0, "profit": 0,
+                    "paid": total_val, "payment_method": pm,
+                    "is_return": False, "is_historical": True,
+                    "notes": str(record.get("notes") or ""),
+                    "created_at": _parse_date(record.get("date")) or iso(now_utc()),
+                    "migration_batch_id": batch_id,
+                }
+                await db.sales.insert_one(doc)
+                created_ids.append({"col": "sales", "id": doc["id"]})
             imported += 1
         except Exception as e:
             errors.append(f"سطر {ridx}: {e}")
-    return {"entity": entity, "imported": imported, "errors": errors[:20], "total_rows": len(rows)}
+    # Save batch record for rollback
+    if imported > 0:
+        await db.migration_batches.insert_one({
+            "id": batch_id, "shop_id": sid(user), "entity": entity,
+            "user_id": user["id"], "user_name": user.get("name", ""),
+            "filename": file.filename or "",
+            "imported": imported, "total_rows": len(rows),
+            "created_ids": created_ids,
+            "created_at": iso(now_utc()),
+            "rolled_back": False,
+        })
+    return {"entity": entity, "batch_id": batch_id, "imported": imported, "errors": errors[:20], "total_rows": len(rows)}
+
+# ---------- Migration Preview / Templates / Batches / Rollback ----------
+class MigrationPreviewIn(BaseModel):
+    entity: str
+    mapping: dict
+    sample_rows: List[dict]
+
+@api.post("/migration/preview")
+async def migration_preview(data: MigrationPreviewIn, user=Depends(require_shop_user)):
+    if data.entity not in MIGRATION_SCHEMAS:
+        raise HTTPException(400, "نوع بيانات غير مدعوم")
+    schema = MIGRATION_SCHEMAS[data.entity]
+    preview = []
+    for row in data.sample_rows[:3]:
+        record = {}
+        for src, tgt in data.mapping.items():
+            if tgt == "ignore" or tgt not in schema["fields"]: continue
+            v = row.get(src)
+            if v in (None, ""): continue
+            record[tgt] = v
+        # Fill defaults per entity
+        if data.entity == "products":
+            record.setdefault("unit", "قطعة")
+            record.setdefault("stock", 0)
+            record.setdefault("cost_price", 0)
+            record.setdefault("min_stock", 0)
+            record.setdefault("tax_rate", 0)
+            if not record.get("barcode"):
+                record["barcode"] = "سيُولّد تلقائياً"
+        record["_valid"] = all(k in record and record[k] not in (None, "") for k in schema["required"])
+        preview.append(record)
+    return {"preview": preview}
+
+class TemplateSaveIn(BaseModel):
+    entity: str
+    headers_fp: str
+    mapping: dict
+    name: Optional[str] = ""
+
+@api.get("/migration/templates")
+async def list_templates(user=Depends(require_shop_user)):
+    return await db.migration_templates.find({"shop_id": sid(user)}, {"_id": 0}).sort("created_at", -1).to_list(200)
+
+@api.post("/migration/templates")
+async def save_template(data: TemplateSaveIn, user=Depends(require_shop_user)):
+    if data.entity not in MIGRATION_SCHEMAS:
+        raise HTTPException(400, "نوع بيانات غير مدعوم")
+    existing = await db.migration_templates.find_one(
+        {"shop_id": sid(user), "entity": data.entity, "headers_fp": data.headers_fp}
+    )
+    if existing:
+        await db.migration_templates.update_one(
+            {"id": existing["id"]},
+            {"$set": {"mapping": data.mapping, "name": data.name or existing.get("name") or f"قالب {data.entity}", "updated_at": iso(now_utc())}}
+        )
+        return {"ok": True, "id": existing["id"], "updated": True}
+    doc = {
+        "id": new_id(), "shop_id": sid(user),
+        "entity": data.entity, "headers_fp": data.headers_fp,
+        "mapping": data.mapping,
+        "name": data.name or f"قالب {data.entity}",
+        "created_at": iso(now_utc()), "updated_at": iso(now_utc()),
+    }
+    await db.migration_templates.insert_one(doc)
+    return {"ok": True, "id": doc["id"], "updated": False}
+
+@api.delete("/migration/templates/{tid}")
+async def delete_template(tid: str, user=Depends(require_shop_user)):
+    await db.migration_templates.delete_one({"id": tid, "shop_id": sid(user)})
+    return {"ok": True}
+
+@api.get("/migration/batches")
+async def list_batches(user=Depends(require_shop_user)):
+    return await db.migration_batches.find(
+        {"shop_id": sid(user)}, {"_id": 0, "created_ids": 0}
+    ).sort("created_at", -1).to_list(50)
+
+@api.post("/migration/rollback/{bid}")
+async def rollback_batch(bid: str, user=Depends(require_shop_user)):
+    b = await db.migration_batches.find_one({"id": bid, "shop_id": sid(user)})
+    if not b:
+        raise HTTPException(404, "الدفعة غير موجودة")
+    if b.get("rolled_back"):
+        raise HTTPException(400, "تمّ التراجع عن هذه الدفعة سابقاً")
+    deleted = 0
+    for entry in b.get("created_ids", []):
+        col = entry.get("col"); doc_id = entry.get("id")
+        if not col or not doc_id: continue
+        r = await db[col].delete_one({"id": doc_id, "shop_id": sid(user)})
+        deleted += r.deleted_count
+    await db.migration_batches.update_one(
+        {"id": bid},
+        {"$set": {"rolled_back": True, "rolled_back_at": iso(now_utc()), "deleted": deleted}}
+    )
+    return {"ok": True, "deleted": deleted, "batch_id": bid}
 
 # ---------- Reports ----------
 @api.get("/reports/dashboard")

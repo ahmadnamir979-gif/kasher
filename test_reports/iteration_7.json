@@ -1,0 +1,26 @@
+{
+  "summary": "Iteration 7 (Save Template, Preview, Rollback, Historical Invoices) fully verified. Backend: 14/14 pytest cases pass covering schemas (4 entities including invoices), analyze returning headers_fp + mapping_source ('ai' vs 'template'), template CRUD with dedup (insert then update returns updated=true), template auto-apply on matching fingerprint (bypassing AI), /migration/preview producing 3 rows with _valid flag (true when required mapped, false when sale_price missing), import returning batch_id, /migration/batches listing, /migration/rollback/{bid} deleting docs (products count restored), second rollback returning 400 with Arabic message 'تمّ التراجع عن هذه الدفعة سابقاً', and historical invoices going into sales collection with is_historical=true, items=[], and NO product stock mutation. Frontend: end-to-end wizard via Playwright — entity-invoices tile present (violet), file upload → analyze → migration-preview panel with preview-row-0..2, save-template-btn opens dialog, tpl-name-input + save-tpl-confirm saves, import succeeds, restart shows آخر عمليات النقل with batch-row-{id} and rollback-{id} (confirmed via window.confirm), and re-analyzing the same file shows the violet 'قالب محفوظ' badge (auto-apply working).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration7.py",
+    "/app/test_reports/pytest/iter7.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py has grown to 1604 lines — migration endpoints (schemas, analyze, import, preview, templates, batches, rollback) should be split into /app/backend/routers/migration.py for maintainability.",
+    "/migration/import still receives `mapping` as a query-string JSON — for very large mappings (many source columns) URL length limits could bite; moving to multipart form field is safer.",
+    "Rollback deletes docs but does not restore side-effects (e.g., auto-created categories from a products import remain). Consider tracking created categories in the batch's created_ids and deleting them too, or at least surface a note in UI.",
+    "DialogContent warning in console ('Missing Description or aria-describedby') on save-template dialog — add DialogDescription for a11y.",
+    "list_batches limits to 50 records with no pagination — for shops with heavy migration usage a paginated endpoint would be better.",
+    "MigrationPreviewIn accepts arbitrary dicts for mapping and rows — no size cap. A malicious client could POST very large payloads. Consider max_length constraints."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration7.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@pos.com / Admin@1234 (super); shop-owner accounts auto-created with TEST_it7_/TEST_ui7_ prefixes.",
+  "seed_data_creation": "Fresh test shop + owner created per run via /api/admin/shops; products & invoices imported via wizard and then rolled back.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Migration endpoints require require_shop_user (not super_admin). Headers fingerprint = sha1(sorted lowercased header names)[:16]. Batches store created_ids as [{col, id}] which is what rollback iterates. Historical invoices land in `sales` with is_historical=true, items=[], and do NOT modify product.stock — this is intentional. Preview endpoint expects JSON body {entity, mapping, sample_rows} whereas analyze/import expect multipart file + query params.",
+  "rca of the issue": "N/A — no issues found."
+}
