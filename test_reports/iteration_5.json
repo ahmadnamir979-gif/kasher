@@ -1,0 +1,29 @@
+{
+  "summary": "Iteration 5 (frontend-only): Held Invoice Reprint + Barcode Scan Add — all 6 acceptance scenarios validated via Playwright against the live preview URL. (1) Typing KNOWN barcode '1234567890' into [data-testid=pos-search-input] and pressing Enter adds the existing product to the cart (cart-item-0 appears). (2) Typing UNKNOWN numeric barcode '9999999999913' (13 digits) opens the quick-add dialog with the captured barcode text rendered exactly as entered. (3) Filling quick-add-name='منتج سريع', quick-add-price=15, quick-add-cost=7, quick-add-stock=3 and clicking [data-testid=quick-add-save] closes the dialog, POSTs /api/products (success toast), and the created product appears as a cart item — verified by cart contains 'منتج سريع' and 1 cart-item element. (4a) Clicking Save with empty name shows Arabic error toast 'الاسم والسعر إجباريان' and the dialog stays open — no product created. (4b) Same with name filled but empty sale_price: dialog stays open, error toast shown. (5) Non-numeric string 'foobar' + Enter → quick-add dialog NOT opened; 5-digit numeric '12345' + Enter → also NOT opened (regex /^\\d{6,}$/ enforced correctly). (6) Held-invoices dialog: seeded held row shows 'طباعة' button with data-testid=print-held-{id} next to 'استئناف'; clicking it invokes window.open (stubbed) and the produced HTML contains 'طلب معلّق' banner, the shop name ('TEST_it5_shop_…') and the held item name ('منتج تجريبي'). Length of captured HTML: 8423 chars. No backend testing performed (frontend-only iteration).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Quick-add + Held dialogs", "issues": ["Radix DialogContent still missing Description / aria-describedby (pre-existing pattern, not blocking) — repeated a11y warnings in console."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "POS.jsx submitQuickAdd validates only name & sale_price but does not sanitize the barcode value — the exact string captured from search is sent as barcode. If a scanner appends a newline or accidentally captures partial name, an invalid barcode could be stored. Consider trimming and re-validating /^\\d{6,}$/ inside submitQuickAdd.",
+    "printHeld uses setTimeout(printReceipt, 100) but does not await React commit — on slow machines the hidden #held-print-area may still be empty when printReceipt reads innerHTML, producing a blank window. Consider using useEffect on heldPrintPreview to trigger print, or a longer/dynamic wait.",
+    "handleBarcodeEnter uses toLowerCase() on the query but barcodes are numeric — noop, harmless. However name match falls back to lowercase comparison; if two products share the same lowercase name, only the first is added — minor UX ambiguity.",
+    "After successful quick-add, the code calls addToCart(data) which pushes qty=1 regardless of the quick-add stock quantity entered. If cashier entered stock=3 expecting to sell 3, they must manually change qty. Consider setting qty=+quickAdd.stock (or a separate 'qty in cart' field).",
+    "POS.jsx grew again (~607 lines). Iteration 4 already flagged the need to split — quick-add + held-print logic further inflates the file. Split into hooks/components (usePOSCart, HeldInvoicesDialog, QuickAddDialog).",
+    "Receipt.jsx isPending branch hides payment_method but still renders 'المبلغ المتوقع' via total which includes tax — if held item had tax_rate>0 the pending slip will include tax without a line. Consider showing subtotal only for pending slips (spec says 'adjusts totals label')."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only)", "frontend": "100% (6/6 scenarios)"},
+  "test_credentials": "Super admin admin@pos.com / Admin@1234. Ephemeral shop owner: TEST_it5ui_619405@pos.com / Owner@1234 (TEST_ prefixed).",
+  "seed_data_creation": "Created TEST_it5_shop_619405 with one product (منتج تجريبي, barcode 1234567890, stock 50) and one held invoice (qty 2). Additional product 'منتج سريع' auto-created by the UI test via the quick-add flow (barcode 9999999999913, stock 3).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 5 UI verified end-to-end on preview URL. To re-test: (1) create fresh shop via POST /api/admin/shops as admin@pos.com; (2) seed one product with a known barcode and one held invoice using the shop token; (3) login in Playwright, navigate /pos, stub window.open to capture .document.write payloads into window.__captured, then exercise the 6 scenarios above. Key data-testids: pos-search-input, quick-add-name, quick-add-price, quick-add-cost, quick-add-stock, quick-add-save, held-invoices-btn, print-held-{id}, resume-{id}, cart-item-0. Quick-add regex is /^\\d{6,}$/ (matches on Enter only). Print target uses hidden div id='held-print-area' with kind='pending' ReceiptPreview.",
+  "rca of the issue": "No issues found. All acceptance criteria for iteration 5 pass."
+}

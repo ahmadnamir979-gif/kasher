@@ -1,8 +1,15 @@
 import { fmt } from "@/lib/api";
 
-export function ReceiptPreview({ shop, sale, cashierName }) {
+export function ReceiptPreview({ shop, sale, cashierName, kind = "sale" }) {
     if (!sale) return null;
     const dt = new Date(sale.created_at || Date.now());
+    const isPending = kind === "pending";
+    const isReturn = sale.is_return;
+    const title = isPending ? "طلب معلّق" : isReturn ? "إيصال مرتجع" : "فاتورة";
+    const subtotal = sale.subtotal != null ? sale.subtotal : (sale.items || []).reduce((s, i) => s + i.qty * i.price - (i.discount || 0), 0);
+    const tax = sale.tax || 0;
+    const discount = sale.discount || 0;
+    const total = sale.total != null ? sale.total : (subtotal + tax - discount);
     return (
         <div className="receipt-print bg-white" style={{ width: "80mm", padding: "6mm 4mm", fontFamily: "'IBM Plex Sans Arabic', monospace", color: "#000", fontSize: "12px", lineHeight: 1.3, direction: "rtl" }}>
             <div style={{ textAlign: "center", marginBottom: "8px" }}>
@@ -10,10 +17,15 @@ export function ReceiptPreview({ shop, sale, cashierName }) {
                 {shop?.phone && <div style={{ fontSize: "11px" }}>{shop.phone}</div>}
                 {shop?.address && <div style={{ fontSize: "11px" }}>{shop.address}</div>}
             </div>
+            {isPending && (
+                <div style={{ background: "#000", color: "#fff", textAlign: "center", padding: "4px", fontWeight: 700, letterSpacing: "2px", marginBottom: "6px", fontSize: "13px" }}>
+                    ★ طلب معلّق — بانتظار العودة ★
+                </div>
+            )}
             <div style={{ borderTop: "1px dashed #000", borderBottom: "1px dashed #000", padding: "4px 0", marginBottom: "6px", fontSize: "11px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}><span>فاتورة</span><span className="tabular-nums">#{sale.invoice_no}</span></div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}><span>{title}</span><span className="tabular-nums">{sale.invoice_no ? `#${sale.invoice_no}` : (sale.label || "")}</span></div>
                 <div style={{ display: "flex", justifyContent: "space-between" }}><span>التاريخ</span><span className="tabular-nums">{dt.toLocaleString("ar-EG")}</span></div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}><span>الكاشير</span><span>{cashierName || sale.cashier_name}</span></div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}><span>الكاشير</span><span>{cashierName || sale.cashier_name || sale.user_name}</span></div>
                 <div style={{ display: "flex", justifyContent: "space-between" }}><span>الزبون</span><span>{sale.customer_name || "نقدي"}</span></div>
             </div>
             <table style={{ width: "100%", fontSize: "11px", borderCollapse: "collapse" }}>
@@ -37,20 +49,22 @@ export function ReceiptPreview({ shop, sale, cashierName }) {
                 </tbody>
             </table>
             <div style={{ borderTop: "1px dashed #000", marginTop: "6px", paddingTop: "4px", fontSize: "11px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}><span>المجموع</span><span className="tabular-nums">{fmt(sale.subtotal)}</span></div>
-                {sale.tax > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}><span>الضريبة</span><span className="tabular-nums">{fmt(sale.tax)}</span></div>}
-                {sale.discount > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}><span>الخصم</span><span className="tabular-nums">-{fmt(sale.discount)}</span></div>}
+                <div style={{ display: "flex", justifyContent: "space-between" }}><span>المجموع</span><span className="tabular-nums">{fmt(subtotal)}</span></div>
+                {tax > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}><span>الضريبة</span><span className="tabular-nums">{fmt(tax)}</span></div>}
+                {discount > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}><span>الخصم</span><span className="tabular-nums">-{fmt(discount)}</span></div>}
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: "16px", fontWeight: "700", borderTop: "1px solid #000", marginTop: "4px", paddingTop: "4px" }}>
-                    <span>الإجمالي</span><span className="tabular-nums">{fmt(sale.total)}</span>
+                    <span>{isPending ? "المبلغ المتوقع" : "الإجمالي"}</span><span className="tabular-nums">{fmt(total)}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: "3px" }}>
-                    <span>طريقة الدفع</span>
-                    <span>{sale.payment_method === "cash" ? "نقدي" : sale.payment_method === "card" ? "بطاقة" : "آجل"}</span>
-                </div>
+                {!isPending && (
+                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: "3px" }}>
+                        <span>طريقة الدفع</span>
+                        <span>{sale.payment_method === "cash" ? "نقدي" : sale.payment_method === "card" ? "بطاقة" : "آجل"}</span>
+                    </div>
+                )}
             </div>
             <div style={{ textAlign: "center", marginTop: "8px", fontSize: "10px", borderTop: "1px dashed #000", paddingTop: "6px" }}>
-                <div>شكراً لتسوقكم معنا</div>
-                <div style={{ fontFamily: "monospace", fontSize: "14px", marginTop: "3px" }}>*{sale.invoice_no}*</div>
+                <div>{isPending ? "هذا ليس إيصال دفع — للاحتفاظ فقط" : "شكراً لتسوقكم معنا"}</div>
+                {sale.invoice_no && <div style={{ fontFamily: "monospace", fontSize: "14px", marginTop: "3px" }}>*{sale.invoice_no}*</div>}
             </div>
         </div>
     );

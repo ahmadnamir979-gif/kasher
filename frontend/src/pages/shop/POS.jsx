@@ -73,6 +73,8 @@ export default function POS() {
     const [waOpen, setWaOpen] = useState(false);
     const [held, setHeld] = useState([]);
     const [heldOpen, setHeldOpen] = useState(false);
+    const [heldPrintPreview, setHeldPrintPreview] = useState(null);
+    const [quickAdd, setQuickAdd] = useState(null);
     const [now, setNow] = useState(new Date());
     const searchRef = useRef(null);
 
@@ -127,8 +129,32 @@ export default function POS() {
         if (e.key === "Enter" && q.trim()) {
             const t = q.trim().toLowerCase();
             const match = products.find(p => (p.barcode || "").toLowerCase() === t || p.name.toLowerCase() === t);
-            if (match) { addToCart(match); setQ(""); }
+            if (match) { addToCart(match); setQ(""); return; }
+            // Unknown barcode/name — offer quick add
+            if (/^\d{6,}$/.test(t)) {
+                setQuickAdd({ barcode: t, name: "", sale_price: "", cost_price: "", stock: 1 });
+                setQ("");
+            }
         }
+    };
+
+    const submitQuickAdd = async () => {
+        if (!quickAdd.name.trim() || !quickAdd.sale_price) return toast.error("الاسم والسعر إجباريان");
+        try {
+            const { data } = await api.post("/products", {
+                name: quickAdd.name.trim(),
+                barcode: quickAdd.barcode,
+                warehouse_id: warehouseId || null,
+                cost_price: +quickAdd.cost_price || 0,
+                sale_price: +quickAdd.sale_price,
+                stock: +quickAdd.stock || 1,
+                min_stock: 0, unit: "قطعة", tax_rate: 0, is_active: true,
+            });
+            toast.success(`تمّت الإضافة: ${data.name}`);
+            addToCart(data);
+            setQuickAdd(null);
+            const pd = await api.get("/products"); setProducts(pd.data);
+        } catch (e) { toast.error(formatApiError(e)); }
     };
 
     const pay = async (method) => {
@@ -184,6 +210,10 @@ export default function POS() {
         if (!window.confirm("حذف الفاتورة المعلّقة؟")) return;
         await api.delete(`/held-invoices/${h.id}`);
         refresh();
+    };
+    const printHeld = (h) => {
+        setHeldPrintPreview(h);
+        setTimeout(() => printReceipt("held-print-area"), 100);
     };
     const lastInvoiceNo = lastSale?.invoice_no || products.length; // fallback for display
     const currentWarehouse = warehouses.find(w => w.id === warehouseId);
@@ -502,7 +532,10 @@ export default function POS() {
                                             </div>
                                             <div className="flex items-center justify-between border-t pt-2">
                                                 <span className="text-lg font-bold tabular-nums text-blue-700">{fmt(t)}</span>
-                                                <Button size="sm" onClick={() => resumeHeld(h)} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1" data-testid={`resume-${h.id}`}><PlayCircle className="w-3.5 h-3.5" /> استئناف</Button>
+                                                <div className="flex gap-1.5">
+                                                    <Button size="sm" variant="outline" onClick={() => printHeld(h)} className="gap-1" data-testid={`print-held-${h.id}`}><Printer className="w-3.5 h-3.5" /> طباعة</Button>
+                                                    <Button size="sm" onClick={() => resumeHeld(h)} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1" data-testid={`resume-${h.id}`}><PlayCircle className="w-3.5 h-3.5" /> استئناف</Button>
+                                                </div>
                                             </div>
                                         </div>
                                     );
@@ -512,6 +545,62 @@ export default function POS() {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* Quick-add unknown barcode dialog */}
+            <Dialog open={!!quickAdd} onOpenChange={(o) => !o && setQuickAdd(null)}>
+                <DialogContent dir="rtl" className="bg-white">
+                    <DialogHeader><DialogTitle>باركود غير معروف — إضافة منتج جديد</DialogTitle></DialogHeader>
+                    {quickAdd && (
+                        <div className="space-y-3">
+                            <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
+                                <div className="text-xs text-amber-800 mb-1">الباركود المُلتقط</div>
+                                <div className="font-mono tabular-nums text-lg font-bold text-amber-900">{quickAdd.barcode}</div>
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium">اسم المنتج *</label>
+                                <Input value={quickAdd.name} onChange={(e) => setQuickAdd(q => ({...q, name: e.target.value}))} data-testid="quick-add-name" autoFocus placeholder="مثال: علبة تونا 200غ" />
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                                <div>
+                                    <label className="text-sm font-medium">التكلفة</label>
+                                    <Input type="number" value={quickAdd.cost_price} onChange={(e) => setQuickAdd(q => ({...q, cost_price: e.target.value}))} data-testid="quick-add-cost" />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium">سعر البيع *</label>
+                                    <Input type="number" value={quickAdd.sale_price} onChange={(e) => setQuickAdd(q => ({...q, sale_price: e.target.value}))} data-testid="quick-add-price" />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium">الكمية</label>
+                                    <Input type="number" value={quickAdd.stock} onChange={(e) => setQuickAdd(q => ({...q, stock: e.target.value}))} data-testid="quick-add-stock" />
+                                </div>
+                            </div>
+                            <p className="text-xs text-slate-500">سيُضاف المنتج للمخزن الحالي وسيدخل السلة تلقائياً.</p>
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setQuickAdd(null)}>إلغاء</Button>
+                        <Button onClick={submitQuickAdd} className="bg-slate-900 hover:bg-slate-800 text-white gap-2" data-testid="quick-add-save"><Save className="w-4 h-4" /> حفظ وإضافة للسلة</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Hidden print area for held invoice slip */}
+            <div style={{ position: "absolute", left: "-9999px", top: 0 }}>
+                <div id="held-print-area">
+                    {heldPrintPreview && (
+                        <ReceiptPreview shop={user?.shop} kind="pending"
+                            sale={{
+                                items: heldPrintPreview.items,
+                                created_at: heldPrintPreview.created_at,
+                                cashier_name: heldPrintPreview.user_name,
+                                customer_name: heldPrintPreview.customer_name,
+                                label: heldPrintPreview.label,
+                                discount: heldPrintPreview.discount,
+                            }}
+                            cashierName={heldPrintPreview.user_name} />
+                    )}
+                </div>
+            </div>
         </div>
     );
 }
