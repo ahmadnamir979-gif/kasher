@@ -78,6 +78,24 @@ export default function POS() {
     const [now, setNow] = useState(new Date());
     const searchRef = useRef(null);
 
+    // Recent-categories usage tracker (per shop)
+    const usageKey = `pos_cat_usage_${user?.shop_id || "x"}`;
+    const [catUsage, setCatUsage] = useState(() => {
+        try { return JSON.parse(localStorage.getItem(usageKey) || "{}"); } catch { return {}; }
+    });
+    const bumpCategory = (cid) => {
+        if (!cid) return;
+        setCatUsage(prev => {
+            const next = { ...prev, [cid]: (prev[cid] || 0) + 1 };
+            try { localStorage.setItem(usageKey, JSON.stringify(next)); } catch {}
+            return next;
+        });
+    };
+    const sortedCategories = useMemo(() => {
+        return [...categories].sort((a, b) => (catUsage[b.id] || 0) - (catUsage[a.id] || 0) || a.name.localeCompare(b.name, "ar"));
+    }, [categories, catUsage]);
+    const topCategories = useMemo(() => sortedCategories.filter(c => catUsage[c.id]).slice(0, 3), [sortedCategories, catUsage]);
+
     useEffect(() => {
         const t = setInterval(() => setNow(new Date()), 30000);
         return () => clearInterval(t);
@@ -152,6 +170,7 @@ export default function POS() {
                 min_stock: 0, unit: "قطعة", tax_rate: 0, is_active: true,
             });
             toast.success(`تمّت الإضافة: ${data.name}`);
+            bumpCategory(quickAdd.category_id);
             addToCart(data);
             setQuickAdd(null);
             const pd = await api.get("/products"); setProducts(pd.data);
@@ -563,12 +582,34 @@ export default function POS() {
                             </div>
                             <div>
                                 <label className="text-sm font-medium">الفئة</label>
+                                {topCategories.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5 mt-1.5 mb-2" data-testid="quick-add-recent-cats">
+                                        <span className="text-[10px] text-slate-500 font-medium self-center">الأكثر استخداماً:</span>
+                                        {topCategories.map(c => {
+                                            const active = quickAdd.category_id === c.id;
+                                            return (
+                                                <button
+                                                    key={c.id}
+                                                    type="button"
+                                                    onClick={() => setQuickAdd(q => ({ ...q, category_id: c.id }))}
+                                                    data-testid={`quick-add-recent-${c.id}`}
+                                                    className={`h-7 px-2.5 rounded-full text-xs font-semibold border transition-colors flex items-center gap-1.5 ${active ? "text-white shadow-sm" : "bg-white text-slate-800 border-zinc-300 hover:bg-zinc-50"}`}
+                                                    style={active ? { backgroundColor: c.color, borderColor: c.color } : {}}
+                                                >
+                                                    <span className={`w-2 h-2 rounded-full ${active ? "bg-white/80" : ""}`} style={!active ? { backgroundColor: c.color } : {}} />
+                                                    {c.name}
+                                                    <span className={`tabular-nums text-[9px] px-1 rounded ${active ? "bg-white/25" : "bg-zinc-100 text-slate-500"}`}>{catUsage[c.id]}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                                 <select value={quickAdd.category_id} onChange={(e) => setQuickAdd(q => ({...q, category_id: e.target.value}))}
                                     data-testid="quick-add-category"
                                     className="w-full h-10 border border-zinc-200 rounded-md px-3 mt-1 bg-white text-sm">
                                     <option value="">— بدون فئة —</option>
-                                    {categories.map(c => (
-                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                    {sortedCategories.map(c => (
+                                        <option key={c.id} value={c.id}>{c.name}{catUsage[c.id] ? `  •  استُخدم ${catUsage[c.id]}×` : ""}</option>
                                     ))}
                                 </select>
                                 {quickAdd.category_id && (
