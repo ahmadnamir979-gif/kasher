@@ -17,17 +17,19 @@ export default function Products() {
     const [importResult, setImportResult] = useState(null);
     const [q, setQ] = useState("");
     const fileRef = useRef(null);
-    const [form, setForm] = useState({ name: "", barcode: "", category_id: "", cost_price: 0, sale_price: 0, stock: 0, min_stock: 0, unit: "قطعة", tax_rate: 0, is_active: true });
+    const [form, setForm] = useState({ name: "", barcode: "", category_id: "", warehouse_id: "", cost_price: 0, sale_price: 0, stock: 0, min_stock: 0, unit: "قطعة", tax_rate: 0, is_active: true });
     const [cat, setCat] = useState({ name: "", color: "#3b82f6" });
+    const [warehouses, setWarehouses] = useState([]);
 
     const load = async () => {
         setItems((await api.get("/products")).data);
         setCats((await api.get("/categories")).data);
+        setWarehouses((await api.get("/warehouses")).data);
     };
     useEffect(() => { load(); }, []);
 
     const save = async () => {
-        try { await api.post("/products", { ...form, category_id: form.category_id || null }); toast.success("تم الحفظ"); setOpen(false); setForm({ name: "", barcode: "", category_id: "", cost_price: 0, sale_price: 0, stock: 0, min_stock: 0, unit: "قطعة", tax_rate: 0, is_active: true }); load(); }
+        try { await api.post("/products", { ...form, category_id: form.category_id || null, warehouse_id: form.warehouse_id || null }); toast.success("تم الحفظ"); setOpen(false); setForm({ name: "", barcode: "", category_id: "", warehouse_id: "", cost_price: 0, sale_price: 0, stock: 0, min_stock: 0, unit: "قطعة", tax_rate: 0, is_active: true }); load(); }
         catch (e) { toast.error(formatApiError(e)); }
     };
     const saveCat = async () => {
@@ -88,6 +90,11 @@ export default function Products() {
                                     <select value={form.category_id} onChange={(e) => setForm(f => ({...f, category_id: e.target.value}))} className="w-full h-10 border border-zinc-200 rounded-md px-3 mt-1 bg-white">
                                         <option value="">— بدون —</option>
                                         {cats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                    </select></div>
+                                <div><Label>المخزن</Label>
+                                    <select value={form.warehouse_id} onChange={(e) => setForm(f => ({...f, warehouse_id: e.target.value}))} className="w-full h-10 border border-zinc-200 rounded-md px-3 mt-1 bg-white" data-testid="prod-warehouse">
+                                        <option value="">— الافتراضي —</option>
+                                        {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
                                     </select></div>
                                 <div><Label>وحدة</Label><Input value={form.unit} onChange={(e) => setForm(f => ({...f, unit: e.target.value}))} /></div>
                                 <div><Label>سعر التكلفة</Label><Input type="number" value={form.cost_price} onChange={(e) => setForm(f => ({...f, cost_price: +e.target.value}))} data-testid="prod-cost" /></div>

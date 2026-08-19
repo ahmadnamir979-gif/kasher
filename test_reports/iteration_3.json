@@ -1,0 +1,29 @@
+{
+  "summary": "Iteration 3 tested end-to-end. Backend: 9/9 pytest cases pass — GET /api/warehouses auto-creates a default warehouse for a fresh shop, POST creates extra warehouse, PATCH renames, DELETE blocked on default (400 'لا يمكن حذف المخزن الافتراضي'), delete non-default OK, POST /api/products without warehouse_id auto-assigns default warehouse, POST /api/sales/{id}/return creates a mirror sale with is_return=true, total=-abs(src.total), original_invoice_id set, and stock restored (+qty); second call returns 400 'تمّ إرجاع هذه الفاتورة سابقاً'; calling return on a return returns 400 'لا يمكن إرجاع فاتورة مرتجع'. Frontend UI verified: POS renders new 3-column layout with top action bar (Home/Archive/Cards buttons visible), warehouse name in header + bottom status bar, cart headers (اسم الصنف/الكمية/السعر/المجموع) present, all 8 bottom action buttons visible with correct data-testids (pay-cash-btn/print-last-btn/pay-card-btn/open-returns-btn/whatsapp-btn etc.), returns dialog lists past invoices with إرجاع action, WhatsApp dialog opens after a sale and generates correct wa.me/970591234567?text=... link with shop name + invoice # + items + total, Warehouses page /warehouses supports adding a new warehouse (row appears with 'افتراضي' label on the default), Barcode Labels /barcodes has 3 product checkboxes (shadcn role='checkbox'), JsBarcode svgs render after selection (18 svgs incl. previews), 'توليد باركود للمفقود' and 'طباعة الملصقات' buttons work, Sales page shows 'إرجاع' (data-testid=return-btn-{id}) per non-return row, Products create dialog has Warehouse dropdown (المخزن → -- الافتراضي --), Purchases dialog has data-testid='purchase-warehouse-select' populated with default warehouse.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration3.py",
+    "/app/test_reports/pytest/iteration3_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is ~1058 lines — splitting into modules (warehouses, sales, products, etc.) would help maintainability going forward.",
+    "POS.jsx is ~445 lines with multiple embedded dialogs (returns, WhatsApp, receipt). Consider extracting ReturnsDialog and WhatsAppDialog into their own components.",
+    "In POS.jsx pay() uses `paid: total` for both cash and card — 'تفاصيل الدفع' (pay-card-btn) currently posts payment_method='card' but does not open a payment-details modal despite the label; button behavior does not match its label.",
+    "POS.jsx warehouse filter (line 105) allows products with no warehouse_id to appear regardless of selected warehouse — this is lenient and intentional but could hide multi-warehouse leakage bugs; consider strict filtering once backfill guarantees warehouse_id on every product.",
+    "return_sale endpoint recomputes profit with sign flip but reuses src.subtotal/tax/discount unchanged (not negated). Analytics that sum subtotal separately from total may double-count. Only total/profit are negated. Consider negating subtotal/tax/discount too or documenting the semantics.",
+    "PATCH /api/warehouses ignores wid mismatch — if wid is not found the request still returns {ok:true} (no 404). Minor UX polish.",
+    "BarcodeLabels 'توليد باركود للمفقود' generates random client-side codes then PATCHes each; no dedup check against existing barcodes across shop. Acceptable but noted.",
+    "Two Dialog components trigger DialogContent aria-describedby warnings in POS (returns + wa). Add DialogDescription for a11y.",
+    "CORS is allow_origins=['*'] with allow_credentials=True which browsers will reject; cookies are set with samesite='none' + secure=True. Front works because it uses Authorization header via axios, but this misconfiguration is a latent issue for cookie-based auth."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration3.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Super admin admin@pos.com / Admin@1234 (from /app/memory/test_credentials.md). Iteration 3 tests create ephemeral shops with prefix TEST_it3_* and TEST_it3ui2_* — no cleanup performed (safe due to prefix).",
+  "seed_data_creation": "Test shops (TEST_it3_*, TEST_it3ui*_*) with 3 seed products, one sale, one open shift for UI flow.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 3 validated. Run backend tests: python -m pytest backend/tests/test_iteration3.py -v -o addopts=''. Note pytest.ini enables xdist; -o override disables parallel. POS 3-col layout has data-testids: pos-home-btn, pos-archive-btn, pos-cards-btn, pos-refresh-btn, pos-logout-btn, pos-warehouse-select, pos-product-{id}, discount-input, pay-cash-btn, pay-card-btn, print-last-btn, open-returns-btn, whatsapp-btn, undo-btn, receipt-close-btn, print-receipt-btn, return-row-{id}, wa-phone-input, wa-send-btn. Sales page uses return-btn-{id}. Purchases dialog: purchase-warehouse-select. WA send is stubbed by hooking window.open to capture the wa.me URL.",
+  "rca of the issue": "No functional issues found. Only code review comments noted above."
+}

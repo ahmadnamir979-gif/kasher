@@ -12,14 +12,20 @@ export default function Purchases() {
     const [items, setItems] = useState([]);
     const [products, setProducts] = useState([]);
     const [suppliers, setSuppliers] = useState([]);
+    const [warehouses, setWarehouses] = useState([]);
     const [open, setOpen] = useState(false);
     const [supplierId, setSupplierId] = useState("");
+    const [warehouseId, setWarehouseId] = useState("");
     const [rows, setRows] = useState([]);
 
     const load = async () => {
         setItems((await api.get("/purchases")).data);
         setProducts((await api.get("/products")).data);
         setSuppliers((await api.get("/suppliers")).data);
+        const w = (await api.get("/warehouses")).data;
+        setWarehouses(w);
+        const def = w.find(x => x.is_default) || w[0];
+        if (def && !warehouseId) setWarehouseId(def.id);
     };
     useEffect(() => { load(); }, []);
 
@@ -32,7 +38,7 @@ export default function Purchases() {
             const items = rows.filter(r => r.product_id).map(r => ({ ...r, cost: r.cost || r.price, price: r.price }));
             if (items.length === 0) return toast.error("أضف صنف واحد على الأقل");
             const supplier = suppliers.find(s => s.id === supplierId);
-            await api.post("/purchases", { supplier_id: supplierId || null, supplier_name: supplier?.name || "", items, discount: 0, paid: 0, is_return: false });
+            await api.post("/purchases", { supplier_id: supplierId || null, supplier_name: supplier?.name || "", warehouse_id: warehouseId || null, items, discount: 0, paid: 0, is_return: false });
             toast.success("تم حفظ فاتورة الشراء");
             setOpen(false); setRows([]); setSupplierId(""); load();
         } catch (e) { toast.error(formatApiError(e)); }
@@ -49,12 +55,20 @@ export default function Purchases() {
                     <DialogContent dir="rtl" className="bg-white max-w-4xl">
                         <DialogHeader><DialogTitle>فاتورة شراء جديدة</DialogTitle></DialogHeader>
                         <div className="space-y-4">
-                            <div>
-                                <Label>المورد</Label>
-                                <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} className="w-full h-10 border border-zinc-200 rounded-md px-3 mt-1 bg-white" data-testid="supplier-select">
-                                    <option value="">— اختر مورد —</option>
-                                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                </select>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <Label>المورد</Label>
+                                    <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} className="w-full h-10 border border-zinc-200 rounded-md px-3 mt-1 bg-white" data-testid="supplier-select">
+                                        <option value="">— اختر مورد —</option>
+                                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <Label>المخزن (استلام إليه)</Label>
+                                    <select value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} className="w-full h-10 border border-zinc-200 rounded-md px-3 mt-1 bg-white" data-testid="purchase-warehouse-select">
+                                        {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                                    </select>
+                                </div>
                             </div>
                             <div className="border border-zinc-200 rounded-md">
                                 <table className="w-full text-sm">

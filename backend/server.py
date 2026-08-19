@@ -100,6 +100,7 @@ class ProductIn(BaseModel):
     name: str
     barcode: Optional[str] = ""
     category_id: Optional[str] = None
+    warehouse_id: Optional[str] = None
     cost_price: float = 0
     sale_price: float = 0
     stock: float = 0
@@ -107,6 +108,11 @@ class ProductIn(BaseModel):
     unit: str = "قطعة"
     tax_rate: float = 0
     is_active: bool = True
+
+class WarehouseIn(BaseModel):
+    name: str
+    location: Optional[str] = ""
+    is_default: bool = False
 
 class CustomerIn(BaseModel):
     name: str
@@ -141,16 +147,19 @@ class InvoiceItem(BaseModel):
 class SaleIn(BaseModel):
     customer_id: Optional[str] = None
     customer_name: Optional[str] = "زبون نقدي"
+    warehouse_id: Optional[str] = None
     items: List[InvoiceItem]
     discount: float = 0
     paid: float = 0
     payment_method: Literal["cash", "card", "credit"] = "cash"
     notes: Optional[str] = ""
     is_return: bool = False
+    original_invoice_id: Optional[str] = None
 
 class PurchaseIn(BaseModel):
     supplier_id: Optional[str] = None
     supplier_name: Optional[str] = ""
+    warehouse_id: Optional[str] = None
     items: List[InvoiceItem]
     discount: float = 0
     paid: float = 0
@@ -310,6 +319,11 @@ async def create_shop(data: ShopCreate, _=Depends(require_super_admin)):
         "created_at": iso(now_utc()),
     }
     await db.shops.insert_one(shop_doc)
+    # Create default warehouse
+    await db.warehouses.insert_one({
+        "id": new_id(), "shop_id": shop_id, "name": "المخزن الرئيسي",
+        "location": "", "is_default": True, "created_at": iso(now_utc()),
+    })
     owner_doc = {
         "id": new_id(), "email": email, "name": data.owner_name,
         "password_hash": hash_password(data.owner_password),
@@ -381,6 +395,53 @@ async def delete_category(cid: str, user=Depends(require_shop_user)):
     await db.categories.delete_one({"id": cid, "shop_id": sid(user)})
     return {"ok": True}
 
+# ---------- Warehouses ----------
+async def _ensure_default_warehouse(shop_id: str) -> str:
+    w = await db.warehouses.find_one({"shop_id": shop_id, "is_default": True})
+    if w: return w["id"]
+    w2 = await db.warehouses.find_one({"shop_id": shop_id})
+    if w2:
+        await db.warehouses.update_one({"id": w2["id"]}, {"$set": {"is_default": True}})
+        return w2["id"]
+    wid = new_id()
+    await db.warehouses.insert_one({
+        "id": wid, "shop_id": shop_id, "name": "المخزن الرئيسي",
+        "location": "", "is_default": True, "created_at": iso(now_utc()),
+    })
+    return wid
+
+@api.get("/warehouses")
+async def list_warehouses(user=Depends(require_shop_user)):
+    await _ensure_default_warehouse(sid(user))
+    return await db.warehouses.find({"shop_id": sid(user)}, {"_id": 0}).sort("name", 1).to_list(100)
+
+@api.post("/warehouses")
+async def create_warehouse(data: WarehouseIn, user=Depends(require_shop_user)):
+    if data.is_default:
+        await db.warehouses.update_many({"shop_id": sid(user)}, {"$set": {"is_default": False}})
+    doc = {"id": new_id(), "shop_id": sid(user), **data.model_dump(), "created_at": iso(now_utc())}
+    await db.warehouses.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api.patch("/warehouses/{wid}")
+async def update_warehouse(wid: str, data: WarehouseIn, user=Depends(require_shop_user)):
+    if data.is_default:
+        await db.warehouses.update_many({"shop_id": sid(user)}, {"$set": {"is_default": False}})
+    await db.warehouses.update_one({"id": wid, "shop_id": sid(user)}, {"$set": data.model_dump()})
+    return {"ok": True}
+
+@api.delete("/warehouses/{wid}")
+async def delete_warehouse(wid: str, user=Depends(require_shop_user)):
+    count = await db.warehouses.count_documents({"shop_id": sid(user)})
+    if count <= 1:
+        raise HTTPException(400, "لا يمكن حذف آخر مخزن")
+    w = await db.warehouses.find_one({"id": wid, "shop_id": sid(user)})
+    if w and w.get("is_default"):
+        raise HTTPException(400, "لا يمكن حذف المخزن الافتراضي")
+    await db.warehouses.delete_one({"id": wid, "shop_id": sid(user)})
+    return {"ok": True}
+
 # ---------- Products ----------
 @api.get("/products")
 async def list_products(user=Depends(require_shop_user)):
@@ -388,7 +449,10 @@ async def list_products(user=Depends(require_shop_user)):
 
 @api.post("/products")
 async def create_product(data: ProductIn, user=Depends(require_shop_user)):
-    doc = {"id": new_id(), "shop_id": sid(user), **data.model_dump(), "created_at": iso(now_utc())}
+    payload = data.model_dump()
+    if not payload.get("warehouse_id"):
+        payload["warehouse_id"] = await _ensure_default_warehouse(sid(user))
+    doc = {"id": new_id(), "shop_id": sid(user), **payload, "created_at": iso(now_utc())}
     await db.products.insert_one(doc)
     doc.pop("_id", None)
     return doc
@@ -527,6 +591,56 @@ async def get_sale(sid_: str, user=Depends(require_shop_user)):
     if not s:
         raise HTTPException(404, "Not found")
     return s
+
+@api.post("/sales/{sid_}/return")
+async def return_sale(sid_: str, user=Depends(require_shop_user)):
+    """Create a full return for the given sale. Idempotent-per-invoice via original_invoice_id check."""
+    src = await db.sales.find_one({"id": sid_, "shop_id": sid(user)})
+    if not src:
+        raise HTTPException(404, "الفاتورة غير موجودة")
+    if src.get("is_return"):
+        raise HTTPException(400, "لا يمكن إرجاع فاتورة مرتجع")
+    already = await db.sales.find_one({"shop_id": sid(user), "original_invoice_id": sid_})
+    if already:
+        raise HTTPException(400, "تمّ إرجاع هذه الفاتورة سابقاً")
+    counter = await db.counters.find_one_and_update(
+        {"shop_id": sid(user), "type": "sale"},
+        {"$inc": {"value": 1}}, upsert=True, return_document=True
+    )
+    inv_no = counter["value"] if counter else 1
+    doc = {
+        "id": new_id(), "shop_id": sid(user), "invoice_no": inv_no,
+        "shift_id": None, "cashier_id": user["id"], "cashier_name": user.get("name",""),
+        "customer_id": src.get("customer_id"), "customer_name": src.get("customer_name"),
+        "items": src.get("items", []),
+        "subtotal": src.get("subtotal", 0), "tax": src.get("tax", 0),
+        "discount": src.get("discount", 0),
+        "total": -abs(src.get("total", 0)),
+        "cost_total": src.get("cost_total", 0),
+        "profit": -abs(src.get("profit", 0)),
+        "paid": -abs(src.get("total", 0)),
+        "payment_method": src.get("payment_method", "cash"),
+        "is_return": True,
+        "original_invoice_id": sid_,
+        "original_invoice_no": src.get("invoice_no"),
+        "notes": f"مرتجع فاتورة #{src.get('invoice_no')}",
+        "created_at": iso(now_utc()),
+    }
+    await db.sales.insert_one(doc)
+    # Restore stock
+    for it in src.get("items", []):
+        await db.products.update_one(
+            {"id": it["product_id"], "shop_id": sid(user)},
+            {"$inc": {"stock": it["qty"]}}
+        )
+    # Customer balance
+    if src.get("customer_id") and src.get("payment_method") == "credit":
+        await db.customers.update_one(
+            {"id": src["customer_id"], "shop_id": sid(user)},
+            {"$inc": {"balance": abs(src.get("total", 0))}}
+        )
+    doc.pop("_id", None)
+    return doc
 
 # ---------- Purchases ----------
 @api.post("/purchases")
@@ -896,6 +1010,13 @@ async def startup():
     await db.users.create_index("email", unique=True)
     await db.shops.create_index("id", unique=True)
     await db.products.create_index([("shop_id", 1), ("barcode", 1)])
+    # Backfill: ensure every existing shop has a default warehouse & products have warehouse_id
+    async for shop in db.shops.find({}, {"id": 1}):
+        wid = await _ensure_default_warehouse(shop["id"])
+        await db.products.update_many(
+            {"shop_id": shop["id"], "$or": [{"warehouse_id": None}, {"warehouse_id": {"$exists": False}}]},
+            {"$set": {"warehouse_id": wid}}
+        )
     # Seed super admin
     email = os.environ.get("ADMIN_EMAIL", "admin@pos.com")
     pwd = os.environ.get("ADMIN_PASSWORD", "Admin@1234")
