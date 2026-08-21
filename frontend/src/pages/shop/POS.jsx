@@ -439,9 +439,9 @@ export default function POS() {
                             <div className="grid grid-cols-3 gap-1.5">
                                 {filteredProducts.map(p => (
                                     <button key={p.id} onClick={() => addToCart(p)} data-testid={`pos-product-${p.id}`}
-                                        className="pos-card bg-white border-2 border-zinc-200 hover:border-blue-500 hover:shadow-md rounded p-2 text-right transition-all">
-                                        <div className="h-10 rounded mb-1.5 grid place-items-center text-xl font-bold text-white" style={{ backgroundColor: catColor(p.category_id) }}>{p.name.charAt(0)}</div>
-                                        <div className="text-[11px] font-semibold text-slate-900 leading-tight line-clamp-2 min-h-[26px]">{p.name}</div>
+                                        className="pos-card bg-white border-2 border-zinc-200 hover:border-blue-500 hover:shadow-md rounded p-2 text-center transition-all flex flex-col justify-between min-h-[86px]"
+                                        style={{ borderTopColor: catColor(p.category_id), borderTopWidth: "4px" }}>
+                                        <div className="text-[12px] font-semibold text-slate-900 leading-tight line-clamp-3 flex-1 grid place-items-center px-1">{p.name}</div>
                                         <div className="flex items-center justify-between mt-1.5">
                                             <span className="text-[10px] text-slate-500 tabular-nums">{p.stock}</span>
                                             <span className="text-[11px] font-bold text-blue-700 tabular-nums bg-blue-50 rounded px-1.5">{fmt(p.sale_price)}</span>
