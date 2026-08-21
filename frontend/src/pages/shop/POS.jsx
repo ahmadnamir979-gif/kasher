@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, formatApiError, fmt } from "@/lib/api";
+import { api, formatApiError, isNetworkError, fmt } from "@/lib/api";
+import { cache, queue } from "@/lib/offline";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +14,7 @@ import {
 } from "lucide-react";
 import { ReceiptPreview, printReceipt } from "@/components/Receipt";
 import { ShiftBadge, ShiftManager } from "@/components/ShiftManager";
+import { OfflineBadge } from "@/components/OfflineBadge";
 
 // Top action button (colorful, matches reference)
 function TopBtn({ icon: Icon, label, onClick, color = "sky", testid }) {
@@ -101,14 +103,91 @@ export default function POS() {
         return () => clearInterval(t);
     }, []);
 
-    const refresh = async () => {
-        const [p, c, w, h] = await Promise.all([api.get("/products"), api.get("/categories"), api.get("/warehouses"), api.get("/held-invoices")]);
-        setProducts(p.data); setCategories(c.data); setWarehouses(w.data); setHeld(h.data);
-        const def = w.data.find(x => x.is_default) || w.data[0];
+    const shopId = user?.shop_id;
+    const [syncing, setSyncing] = useState(false);
+
+    const applyData = (p, c, w, h) => {
+        setProducts(p); setCategories(c); setWarehouses(w); setHeld(h || []);
+        const def = w.find(x => x.is_default) || w[0];
         if (def && !warehouseId) setWarehouseId(def.id);
     };
-    const loadShift = async () => { try { const r = await api.get("/shifts/current"); setShift(r.data); } catch { setShift(null); } };
-    useEffect(() => { refresh(); loadShift(); }, []);
+
+    const loadFromCache = () => {
+        const p = cache.load(shopId, "products");
+        const c = cache.load(shopId, "categories");
+        const w = cache.load(shopId, "warehouses");
+        const h = cache.load(shopId, "held");
+        if (p && c && w) {
+            applyData(p.data, c.data, w.data, h?.data || []);
+            return true;
+        }
+        return false;
+    };
+
+    const refresh = async () => {
+        try {
+            const [p, c, w, h] = await Promise.all([api.get("/products"), api.get("/categories"), api.get("/warehouses"), api.get("/held-invoices")]);
+            applyData(p.data, c.data, w.data, h.data);
+            cache.save(shopId, "products", p.data);
+            cache.save(shopId, "categories", c.data);
+            cache.save(shopId, "warehouses", w.data);
+            cache.save(shopId, "held", h.data);
+        } catch (e) {
+            if (isNetworkError(e)) {
+                const ok = loadFromCache();
+                if (ok) toast.warning("لا يوجد إنترنت — تم التحميل من الذاكرة المحلية");
+                else toast.error("لا يوجد إنترنت ولا توجد نسخة محلية");
+            } else {
+                toast.error(formatApiError(e));
+            }
+        }
+    };
+    const loadShift = async () => {
+        try {
+            const r = await api.get("/shifts/current");
+            setShift(r.data);
+            cache.save(shopId, "shift", r.data);
+        } catch (e) {
+            if (isNetworkError(e)) {
+                const c = cache.load(shopId, "shift");
+                setShift(c?.data || null);
+            } else { setShift(null); }
+        }
+    };
+    useEffect(() => { if (shopId) { refresh(); loadShift(); } }, [shopId]);
+
+    // Sync offline sale queue
+    const syncQueue = async () => {
+        if (!shopId) return;
+        const items = queue.all(shopId);
+        if (items.length === 0) return;
+        setSyncing(true);
+        let ok = 0, fail = 0;
+        for (const it of items) {
+            try {
+                await api.post("/sales", it.payload);
+                queue.remove(shopId, it.id);
+                ok++;
+            } catch (e) {
+                if (isNetworkError(e)) break; // stop; still offline
+                queue.updateError(shopId, it.id, formatApiError(e));
+                fail++;
+            }
+        }
+        setSyncing(false);
+        if (ok > 0) { toast.success(`تمّت مزامنة ${ok} فاتورة`); refresh(); }
+        if (fail > 0) toast.error(`فشلت ${fail} فاتورة — راجع الطابور`);
+    };
+
+    // Auto-sync on reconnect
+    useEffect(() => {
+        if (!shopId) return;
+        const onOnline = () => syncQueue();
+        window.addEventListener("online", onOnline);
+        // also try syncing on mount
+        if (navigator.onLine) syncQueue();
+        return () => window.removeEventListener("online", onOnline);
+    }, [shopId]);
 
     useEffect(() => {
         const h = (e) => {
@@ -180,16 +259,39 @@ export default function POS() {
     const pay = async (method) => {
         if (cart.length === 0) return toast.error("السلة فارغة");
         if (!shift) { toast.error("يرجى فتح وردية أولاً"); setShiftDlg(true); return; }
+        const payload = {
+            items: cart, discount, paid: total, payment_method: method,
+            customer_name: "زبون نقدي", warehouse_id: warehouseId, is_return: false,
+        };
         try {
-            const { data } = await api.post("/sales", {
-                items: cart, discount, paid: total, payment_method: method,
-                customer_name: "زبون نقدي", warehouse_id: warehouseId, is_return: false,
-            });
+            const { data } = await api.post("/sales", payload);
             toast.success(`تمّ البيع • ${fmt(total)}`);
             setLastSale(data); setReceiptOpen(true);
             setCart([]); setDiscount(0);
             refresh();
-        } catch (e) { toast.error(formatApiError(e)); }
+        } catch (e) {
+            if (isNetworkError(e)) {
+                // Save locally, generate a temporary receipt so cashier can print
+                const item = queue.add(shopId, payload);
+                const offlineSale = {
+                    ...payload,
+                    id: item.id,
+                    invoice_no: `OFF-${item.id.slice(4, 12)}`,
+                    total,
+                    subtotal,
+                    tax,
+                    created_at: item.created_at,
+                    cashier_name: user?.name,
+                    is_offline: true,
+                };
+                setLastSale(offlineSale);
+                setReceiptOpen(true);
+                setCart([]); setDiscount(0);
+                toast.warning("لا يوجد إنترنت — تمّ حفظ الفاتورة محلياً وستُرفع تلقائياً");
+            } else {
+                toast.error(formatApiError(e));
+            }
+        }
     };
 
     const openReturns = async () => {
@@ -276,6 +378,7 @@ export default function POS() {
                     <div><div className="text-slate-400 text-[10px]">اختصارات</div><div className="font-bold">F1 نقد • F2 بطاقة</div></div>
                 </div>
                 <ShiftBadge shift={shift} onOpen={() => setShiftDlg(true)} onClose={() => setShiftDlg(true)} />
+                <OfflineBadge shopId={shopId} syncing={syncing} onSyncNow={syncQueue} />
                 <button onClick={() => setHeldOpen(true)} data-testid="held-invoices-btn"
                     className="h-11 px-3 rounded-md bg-fuchsia-500 hover:bg-fuchsia-600 text-white text-sm font-semibold flex items-center gap-2 transition-colors shadow-sm">
                     <PauseCircle className="w-4 h-4" /> معلّقة
