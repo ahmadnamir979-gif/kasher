@@ -11,7 +11,7 @@ import {
     Home, Archive, Wallet, Keyboard, RefreshCw, X, Trash2, LogOut,
     Save, Printer, ReceiptText, Gift, DollarSign, FileText, Undo2,
     Boxes, Package as PackageIcon, Search, MessageCircle, PauseCircle, PlayCircle,
-    UserPlus, HandCoins
+    UserPlus, HandCoins, Delete
 } from "lucide-react";
 import { ReceiptPreview, printReceipt } from "@/components/Receipt";
 import { ShiftBadge, ShiftManager } from "@/components/ShiftManager";
@@ -656,9 +656,43 @@ export default function POS() {
             <Dialog open={waOpen} onOpenChange={setWaOpen}>
                 <DialogContent dir="rtl" className="bg-white">
                     <DialogHeader><DialogTitle>إرسال الفاتورة عبر واتساب</DialogTitle></DialogHeader>
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                         <label className="text-sm">رقم الواتساب (مع رمز الدولة)</label>
-                        <Input value={waPhone} onChange={(e) => setWaPhone(e.target.value)} placeholder="970591234567" data-testid="wa-phone-input" className="tabular-nums" />
+                        <div className="flex gap-2">
+                            <Input value={waPhone} onChange={(e) => setWaPhone(e.target.value.replace(/\D/g, ""))}
+                                placeholder="970591234567" data-testid="wa-phone-input"
+                                className="tabular-nums text-lg h-12 flex-1 text-left" dir="ltr" />
+                            <button type="button" onClick={() => setWaPhone(p => p.slice(0, -1))}
+                                data-testid="wa-backspace-btn"
+                                className="h-12 px-4 rounded-md bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-semibold flex items-center gap-1.5 shadow-sm transition-colors">
+                                <Delete className="w-5 h-5" /> تراجع
+                            </button>
+                        </div>
+                        {/* Touch numpad */}
+                        <div className="grid grid-cols-3 gap-1.5" dir="ltr" data-testid="wa-numpad">
+                            {[1,2,3,4,5,6,7,8,9].map(n => (
+                                <button key={n} type="button" onClick={() => setWaPhone(p => (p || "") + n)}
+                                    data-testid={`wa-key-${n}`}
+                                    className="h-12 rounded-md bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-900 text-xl font-bold tabular-nums transition-colors">
+                                    {n}
+                                </button>
+                            ))}
+                            <button type="button" onClick={() => setWaPhone("")}
+                                data-testid="wa-clear-btn"
+                                className="h-12 rounded-md bg-rose-100 hover:bg-rose-200 active:bg-rose-300 text-rose-800 text-xs font-bold transition-colors">
+                                مسح
+                            </button>
+                            <button type="button" onClick={() => setWaPhone(p => (p || "") + "0")}
+                                data-testid="wa-key-0"
+                                className="h-12 rounded-md bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-900 text-xl font-bold tabular-nums transition-colors">
+                                0
+                            </button>
+                            <button type="button" onClick={() => setWaPhone(p => p.slice(0, -1))}
+                                data-testid="wa-numpad-back"
+                                className="h-12 rounded-md bg-amber-100 hover:bg-amber-200 active:bg-amber-300 text-amber-800 flex items-center justify-center transition-colors">
+                                <Delete className="w-5 h-5" />
+                            </button>
+                        </div>
                         <p className="text-xs text-slate-500">مثال: 970591234567 (بدون + أو 00)</p>
                     </div>
                     <DialogFooter>

@@ -17,6 +17,10 @@
 
 ## ما تمّ تنفيذه (Aug 22, 2026)
 
+### Iteration 13 — WhatsApp Touch Numpad + Backspace (Aug 22, 2026)
+- WhatsApp dialog now sports a big amber "تراجع" button that deletes the last digit of the phone in one tap, a 3×4 touch numpad (1-9, 0) for eyes-free entry on POS touch screens, and a rose "مسح" button for a full clear.
+- Input is digit-only (auto-strips non-numeric paste), rendered LTR at `text-lg` for legibility on the cashier stand.
+
 ### Iteration 12 — English digits site-wide (Aug 22, 2026)
 - Switched `fmt`/`fmtInt` in `/lib/api.js` from `ar-EG` locale to `en-US` so every price/qty/balance/invoice number renders with Latin digits (e.g. `755.00` instead of `٧٥٥٫٠٠`).
 - Aligned every date/time formatter in POS, Receipt, and Transfers to `en-GB` so dates read `22/08/2026 00:29`.
