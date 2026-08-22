@@ -17,6 +17,9 @@
 
 ## ما تمّ تنفيذه (Aug 22, 2026)
 
+### Iteration 14 — Keep WA dialog open after send (Aug 22, 2026)
+- Removed the auto-close on "فتح واتساب" so cashier can fix a wrong number and reopen WhatsApp without retyping. Dialog only closes via إلغاء / X. Toast confirms the open action.
+
 ### Iteration 13 — WhatsApp Touch Numpad + Backspace (Aug 22, 2026)
 - WhatsApp dialog now sports a big amber "تراجع" button that deletes the last digit of the phone in one tap, a 3×4 touch numpad (1-9, 0) for eyes-free entry on POS touch screens, and a rose "مسح" button for a full clear.
 - Input is digit-only (auto-strips non-numeric paste), rendered LTR at `text-lg` for legibility on the cashier stand.

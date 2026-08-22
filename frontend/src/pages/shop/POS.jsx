@@ -356,7 +356,7 @@ export default function POS() {
         const items = lastSale.items.map(it => `• ${it.name} × ${it.qty} = ${fmt(it.qty*it.price)}`).join("\n");
         const msg = `*${shopName}*\nفاتورة #${lastSale.invoice_no}\n${new Date(lastSale.created_at).toLocaleString("en-GB")}\n\n${items}\n\n*الإجمالي: ${fmt(lastSale.total)}*\nشكراً لتسوقكم معنا 🌟`;
         window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
-        setWaOpen(false); setWaPhone("");
+        toast.success("تمّ فتح واتساب — النافذة مفتوحة لتصحيح الرقم إن لزم");
     };
 
     // ---- Credit sale (ترحيل دين) ----
