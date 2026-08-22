@@ -30,7 +30,7 @@ const nav = [
     { to: "/sales", icon: ShoppingCart, label: "المبيعات والمرتجعات" },
     { to: "/purchases", icon: Truck, label: "المشتريات" },
     { to: "/customers", icon: Users, label: "العملاء" },
-    { to: "/reminders", icon: BellRing, label: "تذكيرات الديون" },
+    { to: "/reminders", icon: BellRing, label: "الديون والذمم" },
     { to: "/suppliers", icon: Truck, label: "الموردين" },
     { to: "/employees", icon: UserCog, label: "الموظفين" },
     { to: "/expenses", icon: Wallet, label: "المصاريف" },

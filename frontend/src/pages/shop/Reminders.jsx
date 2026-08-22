@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { BellRing, MessageCircle, Trash2, CalendarClock, CheckCircle2, Users, Search, Pencil, Repeat } from "lucide-react";
+import { BellRing, MessageCircle, Trash2, CalendarClock, CheckCircle2, Users, Search, Pencil, Repeat, UserPlus } from "lucide-react";
 
 const STATUS_META = {
     pending: { label: "مجدولة", color: "bg-sky-100 text-sky-800 border-sky-300" },
@@ -28,6 +28,7 @@ export default function Reminders() {
     const [tab, setTab] = useState("due");
     const [dlg, setDlg] = useState(null);          // create reminder
     const [editCust, setEditCust] = useState(null); // edit customer name/phone
+    const [addCust, setAddCust] = useState(null);  // add new debtor
     const [search, setSearch] = useState("");
 
     const load = async () => {
@@ -55,6 +56,7 @@ export default function Reminders() {
         pending: reminders.filter(r => r.status === "pending").length,
         sent: reminders.filter(r => r.status === "sent").length,
     }), [reminders]);
+    const totalDebt = useMemo(() => customers.reduce((sum, c) => sum + Math.max(0, c.balance || 0), 0), [customers]);
 
     const openCreate = (c) => {
         const shop = user?.shop?.name || "المحل";
@@ -91,10 +93,21 @@ export default function Reminders() {
         } catch (e) { toast.error(formatApiError(e)); }
     };
 
-    const remove = async (id) => {
+    const removeReminder = async (id) => {
         if (!window.confirm("حذف التذكير؟ لن يتكرر بعد الحذف")) return;
         try { await api.delete(`/debt-reminders/${id}`); load(); }
         catch (e) { toast.error(formatApiError(e)); }
+    };
+
+    const removeCustomer = async (c) => {
+        if (!window.confirm(`حذف العميل "${c.name}"؟ سيتم حذف كل تذكيراته أيضاً.`)) return;
+        try {
+            await api.delete(`/customers/${c.id}`);
+            // clean local reminders for this customer
+            await Promise.all(reminders.filter(r => r.customer_id === c.id).map(r => api.delete(`/debt-reminders/${r.id}`).catch(() => {})));
+            toast.success("تمّ الحذف");
+            load();
+        } catch (e) { toast.error(formatApiError(e)); }
     };
 
     const saveCustomerEdit = async () => {
@@ -110,28 +123,64 @@ export default function Reminders() {
         } catch (e) { toast.error(formatApiError(e)); }
     };
 
+    const saveNewCustomer = async () => {
+        if (!addCust.name.trim()) return toast.error("الاسم مطلوب");
+        try {
+            await api.post("/customers", {
+                name: addCust.name.trim(),
+                phone: addCust.phone.trim(),
+                email: "", address: "",
+                opening_balance: +addCust.opening_balance || 0,
+            });
+            toast.success("تمّت الإضافة");
+            setAddCust(null);
+            load();
+        } catch (e) { toast.error(formatApiError(e)); }
+    };
+
     return (
         <div className="space-y-6" dir="rtl" data-testid="reminders-page">
-            {/* Search bar */}
-            <div className="relative">
-                <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <Input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="ابحث باسم العميل أو رقم الهاتف…"
-                    className="pr-10 h-11 bg-white text-sm"
-                    data-testid="reminders-search-input"
-                />
-                {search && (
-                    <button onClick={() => setSearch("")} className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-500 hover:text-slate-900" data-testid="reminders-search-clear">مسح</button>
-                )}
+            {/* Top stats */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="bg-gradient-to-l from-rose-50 to-white border border-rose-200 rounded-lg p-4">
+                    <div className="text-xs text-rose-700 font-semibold mb-1">إجمالي الديون</div>
+                    <div className="tabular-nums text-2xl font-black text-rose-800">{fmt(totalDebt)}</div>
+                </div>
+                <div className="bg-gradient-to-l from-amber-50 to-white border border-amber-200 rounded-lg p-4">
+                    <div className="text-xs text-amber-700 font-semibold mb-1">عدد المدينين</div>
+                    <div className="tabular-nums text-2xl font-black text-amber-800">{customers.filter(c => (c.balance || 0) > 0).length}</div>
+                </div>
+                <div className="bg-gradient-to-l from-sky-50 to-white border border-sky-200 rounded-lg p-4">
+                    <div className="text-xs text-sky-700 font-semibold mb-1">تذكيرات مستحقة اليوم</div>
+                    <div className="tabular-nums text-2xl font-black text-sky-800">{counts.due}</div>
+                </div>
+            </div>
+
+            {/* Search + Add customer */}
+            <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Input
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="ابحث باسم العميل أو رقم الهاتف…"
+                        className="pr-10 h-11 bg-white text-sm"
+                        data-testid="reminders-search-input"
+                    />
+                    {search && (
+                        <button onClick={() => setSearch("")} className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-500 hover:text-slate-900" data-testid="reminders-search-clear">مسح</button>
+                    )}
+                </div>
+                <Button onClick={() => setAddCust({ name: "", phone: "", opening_balance: 0 })} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 h-11" data-testid="add-debtor-btn">
+                    <UserPlus className="w-4 h-4" /> إضافة عميل مدين
+                </Button>
             </div>
 
             {/* Debtors panel */}
             <section className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
                 <header className="flex items-center gap-3 px-5 h-14 border-b border-zinc-200 bg-gradient-to-l from-amber-50 to-white">
                     <BellRing className="w-5 h-5 text-amber-600" />
-                    <h2 className="font-semibold text-slate-900">العملاء المدينون</h2>
+                    <h2 className="font-semibold text-slate-900">قائمة الذمم — العملاء المدينون</h2>
                     <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-semibold">{debtors.length}</span>
                 </header>
                 <div className="p-4">
@@ -154,10 +203,16 @@ export default function Reminders() {
                                                 <div className="text-[10px] text-slate-500">الرصيد</div>
                                                 <div className="tabular-nums font-bold text-rose-700">{fmt(c.balance)}</div>
                                             </div>
-                                            <button onClick={() => setEditCust({ id: c.id, name: c.name, phone: c.phone || "" })}
-                                                data-testid={`edit-customer-${c.id}`}
-                                                className="text-slate-500 hover:text-slate-900 hover:bg-zinc-100 p-1.5 rounded"
-                                                title="تعديل اسم العميل"><Pencil className="w-3.5 h-3.5" /></button>
+                                            <div className="flex flex-col gap-0.5">
+                                                <button onClick={() => setEditCust({ id: c.id, name: c.name, phone: c.phone || "" })}
+                                                    data-testid={`edit-customer-${c.id}`}
+                                                    className="text-slate-500 hover:text-slate-900 hover:bg-zinc-100 p-1 rounded"
+                                                    title="تعديل"><Pencil className="w-3.5 h-3.5" /></button>
+                                                <button onClick={() => removeCustomer(c)}
+                                                    data-testid={`delete-customer-${c.id}`}
+                                                    className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 p-1 rounded"
+                                                    title="حذف"><Trash2 className="w-3.5 h-3.5" /></button>
+                                            </div>
                                         </div>
                                     </div>
                                     <Button size="sm" onClick={() => openCreate(c)} className="w-full bg-amber-500 hover:bg-amber-600 text-white gap-1.5" data-testid={`schedule-reminder-${c.id}`}>
@@ -229,7 +284,7 @@ export default function Reminders() {
                                                 {r.status === "sent" && (
                                                     <span className="text-emerald-700 text-xs flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> {r.sent_at?.substring(0, 10)}</span>
                                                 )}
-                                                <button onClick={() => remove(r.id)} className="text-rose-500 hover:bg-rose-50 p-1.5 rounded" data-testid={`delete-reminder-${r.id}`}><Trash2 className="w-3.5 h-3.5" /></button>
+                                                <button onClick={() => removeReminder(r.id)} className="text-rose-500 hover:bg-rose-50 p-1.5 rounded" data-testid={`delete-reminder-${r.id}`}><Trash2 className="w-3.5 h-3.5" /></button>
                                             </div>
                                         </td>
                                     </tr>
@@ -278,7 +333,7 @@ export default function Reminders() {
                             <div>
                                 <label className="text-xs font-medium text-slate-600">رقم واتساب الزبون</label>
                                 <div className="tabular-nums text-sm h-10 flex items-center px-3 rounded-md bg-zinc-50 border border-zinc-200">
-                                    {dlg.phone || <span className="text-rose-600 text-xs">⚠️ لا يوجد رقم — عدّل اسم/رقم العميل من الأعلى</span>}
+                                    {dlg.phone || <span className="text-rose-600 text-xs">⚠️ لا يوجد رقم — عدّل بيانات العميل</span>}
                                 </div>
                             </div>
                             <div>
@@ -322,6 +377,39 @@ export default function Reminders() {
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setEditCust(null)}>إلغاء</Button>
                         <Button onClick={saveCustomerEdit} className="bg-slate-900 hover:bg-slate-800 text-white" data-testid="edit-customer-save">حفظ</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Add new debtor dialog */}
+            <Dialog open={!!addCust} onOpenChange={(o) => !o && setAddCust(null)}>
+                <DialogContent dir="rtl" className="bg-white max-w-md">
+                    <DialogHeader><DialogTitle>إضافة عميل مدين</DialogTitle></DialogHeader>
+                    {addCust && (
+                        <div className="space-y-3">
+                            <div>
+                                <label className="text-xs font-medium text-slate-600">اسم العميل *</label>
+                                <Input value={addCust.name} onChange={(e) => setAddCust(v => ({ ...v, name: e.target.value }))}
+                                    data-testid="add-customer-name" autoFocus placeholder="أبو محمد" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-medium text-slate-600">رقم الواتساب</label>
+                                <Input value={addCust.phone} onChange={(e) => setAddCust(v => ({ ...v, phone: e.target.value }))}
+                                    data-testid="add-customer-phone" placeholder="970591234567" className="tabular-nums" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-medium text-slate-600">مبلغ الدين الابتدائي (شيكل)</label>
+                                <Input type="number" value={addCust.opening_balance} onChange={(e) => setAddCust(v => ({ ...v, opening_balance: e.target.value }))}
+                                    data-testid="add-customer-balance" className="tabular-nums" />
+                                <p className="text-[11px] text-slate-500 mt-1">ادخل 0 إذا لم يكن عليه دين بعد.</p>
+                            </div>
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setAddCust(null)}>إلغاء</Button>
+                        <Button onClick={saveNewCustomer} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" data-testid="add-customer-save">
+                            <UserPlus className="w-4 h-4" /> حفظ
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

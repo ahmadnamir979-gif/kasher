@@ -10,7 +10,8 @@ import { toast } from "sonner";
 import {
     Home, Archive, Wallet, Keyboard, RefreshCw, X, Trash2, LogOut,
     Save, Printer, ReceiptText, Gift, DollarSign, FileText, Undo2,
-    Boxes, Package as PackageIcon, Search, MessageCircle, PauseCircle, PlayCircle
+    Boxes, Package as PackageIcon, Search, MessageCircle, PauseCircle, PlayCircle,
+    UserPlus, HandCoins
 } from "lucide-react";
 import { ReceiptPreview, printReceipt } from "@/components/Receipt";
 import { ShiftBadge, ShiftManager } from "@/components/ShiftManager";
@@ -73,6 +74,8 @@ export default function POS() {
     const [pastSales, setPastSales] = useState([]);
     const [waPhone, setWaPhone] = useState("");
     const [waOpen, setWaOpen] = useState(false);
+    const [debtDlg, setDebtDlg] = useState(null); // {open, search, newName, newPhone, picked}
+    const [debtors, setDebtors] = useState([]);
     const [held, setHeld] = useState([]);
     const [heldOpen, setHeldOpen] = useState(false);
     const [heldPrintPreview, setHeldPrintPreview] = useState(null);
@@ -256,16 +259,18 @@ export default function POS() {
         } catch (e) { toast.error(formatApiError(e)); }
     };
 
-    const pay = async (method) => {
+    const pay = async (method, opts = {}) => {
         if (cart.length === 0) return toast.error("السلة فارغة");
         if (!shift) { toast.error("يرجى فتح وردية أولاً"); setShiftDlg(true); return; }
         const payload = {
-            items: cart, discount, paid: total, payment_method: method,
-            customer_name: "زبون نقدي", warehouse_id: warehouseId, is_return: false,
+            items: cart, discount, paid: opts.paid ?? total, payment_method: method,
+            customer_id: opts.customer_id || null,
+            customer_name: opts.customer_name || "زبون نقدي",
+            warehouse_id: warehouseId, is_return: false,
         };
         try {
             const { data } = await api.post("/sales", payload);
-            toast.success(`تمّ البيع • ${fmt(total)}`);
+            toast.success(method === "credit" ? `تمّ ترحيل الفاتورة على دين ${opts.customer_name}` : `تمّ البيع • ${fmt(total)}`);
             setLastSale(data); setReceiptOpen(true);
             setCart([]); setDiscount(0);
             refresh();
@@ -352,6 +357,41 @@ export default function POS() {
         const msg = `*${shopName}*\nفاتورة #${lastSale.invoice_no}\n${new Date(lastSale.created_at).toLocaleString("ar-EG")}\n\n${items}\n\n*الإجمالي: ${fmt(lastSale.total)}*\nشكراً لتسوقكم معنا 🌟`;
         window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
         setWaOpen(false); setWaPhone("");
+    };
+
+    // ---- Credit sale (ترحيل دين) ----
+    useEffect(() => {
+        if (!debtDlg?.open) return;
+        (async () => {
+            try { const { data } = await api.get("/customers"); setDebtors(data); }
+            catch (e) { toast.error(formatApiError(e)); }
+        })();
+    }, [debtDlg?.open]);
+
+    const filteredDebtors = useMemo(() => {
+        if (!debtDlg) return [];
+        const q = (debtDlg.search || "").trim().toLowerCase();
+        return debtors
+            .filter(c => !q || c.name.toLowerCase().includes(q) || (c.phone || "").includes(q))
+            .sort((a, b) => (b.balance || 0) - (a.balance || 0));
+    }, [debtors, debtDlg]);
+
+    const confirmCreditSale = async (customer) => {
+        setDebtDlg(null);
+        // paid=0 → the whole invoice becomes credit balance for the customer
+        await pay("credit", { customer_id: customer.id, customer_name: customer.name, paid: 0 });
+    };
+
+    const createDebtorAndCharge = async () => {
+        const name = (debtDlg.newName || "").trim();
+        if (!name) return toast.error("أدخل اسم الزبون");
+        try {
+            const { data } = await api.post("/customers", {
+                name, phone: (debtDlg.newPhone || "").trim(),
+                email: "", address: "", opening_balance: 0,
+            });
+            await confirmCreditSale(data);
+        } catch (e) { toast.error(formatApiError(e)); }
     };
 
     return (
@@ -504,7 +544,10 @@ export default function POS() {
                         <ActBtn icon={Save} label="حفظ الفاتورة" color="sky" onClick={() => pay("cash")} testid="pay-cash-btn" />
                         <ActBtn icon={Printer} label="طباعة الفاتورة" color="cyan" onClick={() => lastSale && printReceipt("receipt-print-area")} testid="print-last-btn" />
                         <ActBtn icon={ReceiptText} label="طباعة آخر فاتورة" color="pink" onClick={() => lastSale ? setReceiptOpen(true) : toast.error("لا توجد فاتورة سابقة")} />
-                        <ActBtn icon={Gift} label="وصل هدية" color="rose" onClick={() => toast.info("قريباً")} />
+                        <ActBtn icon={HandCoins} label="ترحيل دين" color="rose" onClick={() => {
+                            if (cart.length === 0) return toast.error("السلة فارغة");
+                            setDebtDlg({ open: true, search: "", newName: "", newPhone: "", picked: null });
+                        }} testid="credit-sale-btn" />
                         <ActBtn icon={DollarSign} label="تفاصيل الدفع" color="violet" onClick={() => pay("card")} testid="pay-card-btn" />
                         <ActBtn icon={FileText} label="عرض سعر" color="amber" onClick={() => toast.info("قريباً")} />
                         <ActBtn icon={PauseCircle} label="تعليق الفاتورة" color="pink" onClick={holdCart} testid="hold-invoice-btn" />
@@ -624,6 +667,77 @@ export default function POS() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* Credit sale (ترحيل دين) dialog */}
+            <Dialog open={!!debtDlg?.open} onOpenChange={(o) => !o && setDebtDlg(null)}>
+                <DialogContent dir="rtl" className="bg-white max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <HandCoins className="w-5 h-5 text-rose-600" /> ترحيل الفاتورة على دين — {fmt(total)} شيكل
+                        </DialogTitle>
+                    </DialogHeader>
+                    {debtDlg && (
+                        <div className="space-y-4">
+                            {/* Search */}
+                            <div className="relative">
+                                <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                <Input value={debtDlg.search} onChange={(e) => setDebtDlg(d => ({ ...d, search: e.target.value }))}
+                                    data-testid="debt-search" autoFocus
+                                    placeholder="ابحث عن عميل بالاسم أو رقم الهاتف…"
+                                    className="pr-10 h-11 bg-white text-sm" />
+                            </div>
+
+                            {/* Existing customers list */}
+                            <div className="max-h-72 overflow-y-auto border border-zinc-200 rounded-md">
+                                {filteredDebtors.length === 0 ? (
+                                    <div className="p-6 text-center text-slate-400 text-sm">
+                                        <UserPlus className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                                        لا يوجد عميل بهذا الاسم — أضف عميلاً جديداً من الأسفل
+                                    </div>
+                                ) : (
+                                    <div className="divide-y divide-zinc-100">
+                                        {filteredDebtors.map(c => (
+                                            <button key={c.id} onClick={() => confirmCreditSale(c)} data-testid={`credit-pick-${c.id}`}
+                                                className="w-full flex items-center justify-between p-3 hover:bg-rose-50 transition-colors text-right">
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="font-semibold text-sm text-slate-900 truncate">{c.name}</div>
+                                                    <div className="text-xs text-slate-500 tabular-nums">{c.phone || "بدون رقم"}</div>
+                                                </div>
+                                                <div className="text-left shrink-0">
+                                                    <div className="text-[10px] text-slate-500">الرصيد الحالي</div>
+                                                    <div className={`tabular-nums font-bold ${(c.balance || 0) > 0 ? "text-rose-700" : "text-slate-600"}`}>{fmt(c.balance || 0)}</div>
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Add new customer inline */}
+                            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-md">
+                                <div className="text-xs font-semibold text-emerald-900 mb-2 flex items-center gap-1.5">
+                                    <UserPlus className="w-3.5 h-3.5" /> أو أضف عميلاً جديداً وارحّل الفاتورة عليه
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <Input value={debtDlg.newName} onChange={(e) => setDebtDlg(d => ({ ...d, newName: e.target.value }))}
+                                        placeholder="اسم العميل" data-testid="credit-new-name" className="h-9 text-sm bg-white" />
+                                    <Input value={debtDlg.newPhone} onChange={(e) => setDebtDlg(d => ({ ...d, newPhone: e.target.value }))}
+                                        placeholder="رقم الواتساب (اختياري)" data-testid="credit-new-phone" className="h-9 text-sm bg-white tabular-nums" />
+                                </div>
+                                <Button onClick={createDebtorAndCharge} disabled={!debtDlg.newName?.trim()}
+                                    data-testid="credit-new-save"
+                                    className="w-full mt-2 bg-emerald-600 hover:bg-emerald-700 text-white gap-2 h-9">
+                                    <UserPlus className="w-4 h-4" /> إضافة ومحاسبة على الدين
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setDebtDlg(null)}>إلغاء</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {/* Held invoices dialog */}
             <Dialog open={heldOpen} onOpenChange={setHeldOpen}>
                 <DialogContent dir="rtl" className="bg-white max-w-3xl">
