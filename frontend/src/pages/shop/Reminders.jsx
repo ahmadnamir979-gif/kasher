@@ -5,22 +5,30 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { BellRing, MessageCircle, Trash2, CalendarClock, CheckCircle2, Users } from "lucide-react";
+import { BellRing, MessageCircle, Trash2, CalendarClock, CheckCircle2, Users, Search, Pencil, Repeat } from "lucide-react";
 
 const STATUS_META = {
     pending: { label: "مجدولة", color: "bg-sky-100 text-sky-800 border-sky-300" },
     due:     { label: "مستحقة اليوم", color: "bg-amber-100 text-amber-800 border-amber-300" },
     sent:    { label: "أُرسلت", color: "bg-emerald-100 text-emerald-800 border-emerald-300" },
 };
+const REPEAT_META = {
+    none:    { label: "مرة واحدة", short: "—" },
+    weekly:  { label: "كل أسبوع", short: "أسبوعي" },
+    monthly: { label: "كل شهر", short: "شهري" },
+};
 
 function todayIso() { return new Date().toISOString().substring(0, 10); }
+function normalize(s) { return (s || "").toString().trim().toLowerCase(); }
 
 export default function Reminders() {
     const { user } = useAuth();
     const [customers, setCustomers] = useState([]);
     const [reminders, setReminders] = useState([]);
     const [tab, setTab] = useState("due");
-    const [dlg, setDlg] = useState(null); // {customer_id, name, balance, amount, scheduled_date, message}
+    const [dlg, setDlg] = useState(null);          // create reminder
+    const [editCust, setEditCust] = useState(null); // edit customer name/phone
+    const [search, setSearch] = useState("");
 
     const load = async () => {
         try {
@@ -31,9 +39,17 @@ export default function Reminders() {
     };
     useEffect(() => { load(); }, []);
 
-    const debtors = useMemo(() => customers.filter(c => (c.balance || 0) > 0).sort((a, b) => (b.balance || 0) - (a.balance || 0)), [customers]);
+    const s = normalize(search);
+    const debtors = useMemo(() => customers
+        .filter(c => (c.balance || 0) > 0)
+        .filter(c => !s || normalize(c.name).includes(s) || normalize(c.phone).includes(s))
+        .sort((a, b) => (b.balance || 0) - (a.balance || 0)), [customers, s]);
 
-    const filtered = useMemo(() => reminders.filter(r => r.status === tab), [reminders, tab]);
+    const filtered = useMemo(() => reminders
+        .filter(r => r.status === tab)
+        .filter(r => !s || normalize(r.customer_name).includes(s) || normalize(r.customer_phone).includes(s)),
+        [reminders, tab, s]);
+
     const counts = useMemo(() => ({
         due: reminders.filter(r => r.status === "due").length,
         pending: reminders.filter(r => r.status === "pending").length,
@@ -46,7 +62,7 @@ export default function Reminders() {
         const msg = `مرحباً ${c.name}،\nهذا تذكير ودّي من *${shop}* بأن الرصيد المستحق عليكم هو *${amount.toFixed(2)}* شيكل.\nيرجى التكرم بالسداد في أقرب وقت.\nشكراً لتفهمكم 🌟`;
         setDlg({
             customer_id: c.id, name: c.name, phone: c.phone || "", balance: amount,
-            amount, scheduled_date: todayIso(), message: msg,
+            amount, scheduled_date: todayIso(), message: msg, repeat: "none",
         });
     };
 
@@ -57,8 +73,9 @@ export default function Reminders() {
             await api.post("/debt-reminders", {
                 customer_id: dlg.customer_id, amount: +dlg.amount,
                 scheduled_date: dlg.scheduled_date, message: dlg.message,
+                repeat: dlg.repeat || "none",
             });
-            toast.success("تمّت جدولة التذكير");
+            toast.success(dlg.repeat === "none" ? "تمّت جدولة التذكير" : `تمّت جدولة تذكير متكرر (${REPEAT_META[dlg.repeat].label})`);
             setDlg(null);
             load();
         } catch (e) { toast.error(formatApiError(e)); }
@@ -75,13 +92,41 @@ export default function Reminders() {
     };
 
     const remove = async (id) => {
-        if (!window.confirm("حذف التذكير؟")) return;
+        if (!window.confirm("حذف التذكير؟ لن يتكرر بعد الحذف")) return;
         try { await api.delete(`/debt-reminders/${id}`); load(); }
         catch (e) { toast.error(formatApiError(e)); }
     };
 
+    const saveCustomerEdit = async () => {
+        if (!editCust.name.trim()) return toast.error("الاسم مطلوب");
+        try {
+            await api.patch(`/customers/${editCust.id}`, {
+                name: editCust.name.trim(),
+                phone: editCust.phone.trim(),
+            });
+            toast.success("تمّ التحديث");
+            setEditCust(null);
+            load();
+        } catch (e) { toast.error(formatApiError(e)); }
+    };
+
     return (
         <div className="space-y-6" dir="rtl" data-testid="reminders-page">
+            {/* Search bar */}
+            <div className="relative">
+                <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="ابحث باسم العميل أو رقم الهاتف…"
+                    className="pr-10 h-11 bg-white text-sm"
+                    data-testid="reminders-search-input"
+                />
+                {search && (
+                    <button onClick={() => setSearch("")} className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-500 hover:text-slate-900" data-testid="reminders-search-clear">مسح</button>
+                )}
+            </div>
+
             {/* Debtors panel */}
             <section className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
                 <header className="flex items-center gap-3 px-5 h-14 border-b border-zinc-200 bg-gradient-to-l from-amber-50 to-white">
@@ -93,20 +138,26 @@ export default function Reminders() {
                     {debtors.length === 0 ? (
                         <div className="text-center py-12 text-slate-400 text-sm">
                             <Users className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                            لا يوجد عملاء مدينون حالياً
+                            {search ? "لا توجد نتائج تطابق البحث" : "لا يوجد عملاء مدينون حالياً"}
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                             {debtors.map(c => (
                                 <div key={c.id} className="border border-zinc-200 rounded-md p-3 hover:border-amber-400 hover:shadow-sm transition-all" data-testid={`debtor-${c.id}`}>
                                     <div className="flex justify-between items-start mb-2">
-                                        <div>
-                                            <div className="font-semibold text-slate-900 text-sm">{c.name}</div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="font-semibold text-slate-900 text-sm truncate">{c.name}</div>
                                             <div className="text-xs text-slate-500 tabular-nums">{c.phone || "بدون رقم"}</div>
                                         </div>
-                                        <div className="text-left">
-                                            <div className="text-[10px] text-slate-500">الرصيد</div>
-                                            <div className="tabular-nums font-bold text-rose-700">{fmt(c.balance)}</div>
+                                        <div className="flex items-start gap-1.5 shrink-0 ms-2">
+                                            <div className="text-left">
+                                                <div className="text-[10px] text-slate-500">الرصيد</div>
+                                                <div className="tabular-nums font-bold text-rose-700">{fmt(c.balance)}</div>
+                                            </div>
+                                            <button onClick={() => setEditCust({ id: c.id, name: c.name, phone: c.phone || "" })}
+                                                data-testid={`edit-customer-${c.id}`}
+                                                className="text-slate-500 hover:text-slate-900 hover:bg-zinc-100 p-1.5 rounded"
+                                                title="تعديل اسم العميل"><Pencil className="w-3.5 h-3.5" /></button>
                                         </div>
                                     </div>
                                     <Button size="sm" onClick={() => openCreate(c)} className="w-full bg-amber-500 hover:bg-amber-600 text-white gap-1.5" data-testid={`schedule-reminder-${c.id}`}>
@@ -141,44 +192,55 @@ export default function Reminders() {
                                 <th className="p-3">الهاتف</th>
                                 <th className="p-3">المبلغ</th>
                                 <th className="p-3">تاريخ التذكير</th>
+                                <th className="p-3">التكرار</th>
                                 <th className="p-3">الحالة</th>
                                 <th className="p-3 text-left">إجراءات</th>
                             </tr>
                         </thead>
                         <tbody>
                             {filtered.length === 0 && (
-                                <tr><td colSpan={6} className="p-10 text-center text-slate-400">لا توجد تذكيرات في هذه الحالة</td></tr>
+                                <tr><td colSpan={7} className="p-10 text-center text-slate-400">{search ? "لا توجد نتائج تطابق البحث" : "لا توجد تذكيرات في هذه الحالة"}</td></tr>
                             )}
-                            {filtered.map(r => (
-                                <tr key={r.id} className="border-t border-zinc-100" data-testid={`reminder-${r.id}`}>
-                                    <td className="p-3 font-semibold">{r.customer_name}</td>
-                                    <td className="p-3 tabular-nums text-slate-600">{r.customer_phone || "—"}</td>
-                                    <td className="p-3 tabular-nums font-bold text-rose-700">{fmt(r.amount)}</td>
-                                    <td className="p-3 tabular-nums">{r.scheduled_date}</td>
-                                    <td className="p-3">
-                                        <span className={`text-[11px] px-2 py-0.5 rounded-full border font-semibold ${STATUS_META[r.status].color}`}>{STATUS_META[r.status].label}</span>
-                                    </td>
-                                    <td className="p-3">
-                                        <div className="flex justify-end gap-1.5">
-                                            {r.status !== "sent" && (
-                                                <Button size="sm" onClick={() => sendWA(r)} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1" data-testid={`send-wa-${r.id}`}>
-                                                    <MessageCircle className="w-3.5 h-3.5" /> واتساب
-                                                </Button>
-                                            )}
-                                            {r.status === "sent" && (
-                                                <span className="text-emerald-700 text-xs flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> {r.sent_at?.substring(0, 10)}</span>
-                                            )}
-                                            <button onClick={() => remove(r.id)} className="text-rose-500 hover:bg-rose-50 p-1.5 rounded" data-testid={`delete-reminder-${r.id}`}><Trash2 className="w-3.5 h-3.5" /></button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
+                            {filtered.map(r => {
+                                const rep = REPEAT_META[r.repeat || "none"];
+                                return (
+                                    <tr key={r.id} className="border-t border-zinc-100" data-testid={`reminder-${r.id}`}>
+                                        <td className="p-3 font-semibold">{r.customer_name}</td>
+                                        <td className="p-3 tabular-nums text-slate-600">{r.customer_phone || "—"}</td>
+                                        <td className="p-3 tabular-nums font-bold text-rose-700">{fmt(r.amount)}</td>
+                                        <td className="p-3 tabular-nums">{r.scheduled_date}</td>
+                                        <td className="p-3">
+                                            {r.repeat && r.repeat !== "none" ? (
+                                                <span className="text-[11px] px-2 py-0.5 rounded-full bg-violet-100 text-violet-800 border border-violet-300 font-semibold inline-flex items-center gap-1" data-testid={`repeat-badge-${r.id}`}>
+                                                    <Repeat className="w-3 h-3" /> {rep.short}
+                                                </span>
+                                            ) : <span className="text-xs text-slate-400">—</span>}
+                                        </td>
+                                        <td className="p-3">
+                                            <span className={`text-[11px] px-2 py-0.5 rounded-full border font-semibold ${STATUS_META[r.status].color}`}>{STATUS_META[r.status].label}</span>
+                                        </td>
+                                        <td className="p-3">
+                                            <div className="flex justify-end gap-1.5">
+                                                {r.status !== "sent" && (
+                                                    <Button size="sm" onClick={() => sendWA(r)} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1" data-testid={`send-wa-${r.id}`}>
+                                                        <MessageCircle className="w-3.5 h-3.5" /> واتساب
+                                                    </Button>
+                                                )}
+                                                {r.status === "sent" && (
+                                                    <span className="text-emerald-700 text-xs flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> {r.sent_at?.substring(0, 10)}</span>
+                                                )}
+                                                <button onClick={() => remove(r.id)} className="text-rose-500 hover:bg-rose-50 p-1.5 rounded" data-testid={`delete-reminder-${r.id}`}><Trash2 className="w-3.5 h-3.5" /></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
             </section>
 
-            {/* Create dialog */}
+            {/* Create reminder dialog */}
             <Dialog open={!!dlg} onOpenChange={(o) => !o && setDlg(null)}>
                 <DialogContent dir="rtl" className="bg-white max-w-lg">
                     <DialogHeader><DialogTitle>جدولة تذكير — {dlg?.name}</DialogTitle></DialogHeader>
@@ -195,9 +257,28 @@ export default function Reminders() {
                                 </div>
                             </div>
                             <div>
+                                <label className="text-xs font-medium text-slate-600 mb-1 block">تكرار التذكير</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {["none", "weekly", "monthly"].map(k => {
+                                        const active = dlg.repeat === k;
+                                        return (
+                                            <button key={k} type="button" onClick={() => setDlg(d => ({ ...d, repeat: k }))}
+                                                data-testid={`repeat-${k}`}
+                                                className={`h-10 rounded-md border text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${active ? "bg-violet-600 text-white border-violet-600" : "bg-white text-slate-700 border-zinc-200 hover:bg-zinc-50"}`}>
+                                                {k !== "none" && <Repeat className="w-3.5 h-3.5" />}
+                                                {REPEAT_META[k].label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                {dlg.repeat !== "none" && (
+                                    <p className="text-[11px] text-violet-700 mt-1.5">✨ سيتكرر التذكير تلقائياً بعد كل إرسال حتى تحذفه يدوياً</p>
+                                )}
+                            </div>
+                            <div>
                                 <label className="text-xs font-medium text-slate-600">رقم واتساب الزبون</label>
                                 <div className="tabular-nums text-sm h-10 flex items-center px-3 rounded-md bg-zinc-50 border border-zinc-200">
-                                    {dlg.phone || <span className="text-rose-600 text-xs">⚠️ لا يوجد رقم — أضف رقماً في بيانات العميل</span>}
+                                    {dlg.phone || <span className="text-rose-600 text-xs">⚠️ لا يوجد رقم — عدّل اسم/رقم العميل من الأعلى</span>}
                                 </div>
                             </div>
                             <div>
@@ -215,6 +296,32 @@ export default function Reminders() {
                         <Button onClick={submit} className="bg-slate-900 hover:bg-slate-800 text-white gap-2" data-testid="reminder-save">
                             <CalendarClock className="w-4 h-4" /> جدولة
                         </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Edit customer dialog */}
+            <Dialog open={!!editCust} onOpenChange={(o) => !o && setEditCust(null)}>
+                <DialogContent dir="rtl" className="bg-white max-w-md">
+                    <DialogHeader><DialogTitle>تعديل بيانات العميل</DialogTitle></DialogHeader>
+                    {editCust && (
+                        <div className="space-y-3">
+                            <div>
+                                <label className="text-xs font-medium text-slate-600">اسم العميل</label>
+                                <Input value={editCust.name} onChange={(e) => setEditCust(v => ({ ...v, name: e.target.value }))}
+                                    data-testid="edit-customer-name" autoFocus />
+                            </div>
+                            <div>
+                                <label className="text-xs font-medium text-slate-600">رقم الواتساب</label>
+                                <Input value={editCust.phone} onChange={(e) => setEditCust(v => ({ ...v, phone: e.target.value }))}
+                                    data-testid="edit-customer-phone" placeholder="970591234567" className="tabular-nums" />
+                            </div>
+                            <p className="text-[11px] text-slate-500">سيتم تحديث الاسم في كل التذكيرات المرتبطة بهذا العميل تلقائياً.</p>
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setEditCust(null)}>إلغاء</Button>
+                        <Button onClick={saveCustomerEdit} className="bg-slate-900 hover:bg-slate-800 text-white" data-testid="edit-customer-save">حفظ</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

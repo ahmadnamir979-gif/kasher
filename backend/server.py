@@ -136,6 +136,13 @@ class DebtReminderIn(BaseModel):
     amount: float
     scheduled_date: str  # ISO date YYYY-MM-DD
     message: Optional[str] = ""  # optional custom body
+    repeat: Optional[Literal["none", "weekly", "monthly"]] = "none"
+
+class CustomerPatch(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
 
 class EmployeeIn(BaseModel):
     email: EmailStr
@@ -521,6 +528,21 @@ async def create_customer(data: CustomerIn, user=Depends(require_shop_user)):
     doc.pop("_id", None)
     return doc
 
+@api.patch("/customers/{cid}")
+async def update_customer(cid: str, data: CustomerPatch, user=Depends(require_shop_user)):
+    upd = {k: v for k, v in data.model_dump().items() if v is not None}
+    if not upd: return {"ok": True}
+    r = await db.customers.update_one({"id": cid, "shop_id": sid(user)}, {"$set": upd})
+    if r.matched_count == 0: raise HTTPException(404, "العميل غير موجود")
+    # sync name/phone into existing reminders so the UI reflects the new values
+    reminder_upd = {}
+    if "name" in upd: reminder_upd["customer_name"] = upd["name"]
+    if "phone" in upd: reminder_upd["customer_phone"] = upd["phone"]
+    if reminder_upd:
+        await db.debt_reminders.update_many(
+            {"customer_id": cid, "shop_id": sid(user)}, {"$set": reminder_upd})
+    return {"ok": True}
+
 @api.delete("/customers/{cid}")
 async def delete_customer(cid: str, user=Depends(require_shop_user)):
     await db.customers.delete_one({"id": cid, "shop_id": sid(user)})
@@ -580,6 +602,7 @@ async def create_reminder(data: DebtReminderIn, user=Depends(require_shop_user))
         "amount": float(data.amount),
         "scheduled_date": data.scheduled_date,
         "message": msg,
+        "repeat": data.repeat or "none",
         "status": "due" if data.scheduled_date <= today else "pending",
         "created_at": iso(now_utc()),
         "sent_at": None,
@@ -588,12 +611,37 @@ async def create_reminder(data: DebtReminderIn, user=Depends(require_shop_user))
     doc.pop("_id", None)
     return doc
 
+def _next_date(iso_date: str, repeat: str) -> str:
+    d = datetime.fromisoformat(iso_date).date()
+    if repeat == "weekly":
+        d = d + timedelta(days=7)
+    elif repeat == "monthly":
+        # add ~30 days (simple, avoids month-length edge cases)
+        d = d + timedelta(days=30)
+    return d.isoformat()
+
 @api.patch("/debt-reminders/{rid}/mark-sent")
 async def mark_sent(rid: str, user=Depends(require_shop_user)):
-    r = await db.debt_reminders.update_one(
+    r = await db.debt_reminders.find_one({"id": rid, "shop_id": sid(user)}, {"_id": 0})
+    if not r: raise HTTPException(404, "غير موجود")
+    now_iso = iso(now_utc())
+    await db.debt_reminders.update_one(
         {"id": rid, "shop_id": sid(user)},
-        {"$set": {"status": "sent", "sent_at": iso(now_utc())}})
-    if r.matched_count == 0: raise HTTPException(404, "غير موجود")
+        {"$set": {"status": "sent", "sent_at": now_iso}})
+    # If recurring, schedule the next occurrence automatically so it keeps repeating until deleted.
+    rep = r.get("repeat", "none")
+    if rep in ("weekly", "monthly"):
+        today = now_utc().date().isoformat()
+        next_date = _next_date(r.get("scheduled_date", today), rep)
+        clone = {
+            **{k: v for k, v in r.items() if k != "_id"},
+            "id": new_id(),
+            "scheduled_date": next_date,
+            "status": "due" if next_date <= today else "pending",
+            "created_at": now_iso,
+            "sent_at": None,
+        }
+        await db.debt_reminders.insert_one(clone)
     return {"ok": True}
 
 @api.delete("/debt-reminders/{rid}")

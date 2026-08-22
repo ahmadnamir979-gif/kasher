@@ -19,10 +19,13 @@
 
 ### Iteration 10 — Debt Reminders + WhatsApp One-Click (Aug 22, 2026)
 - **صفحة `/reminders`**: قائمة العملاء المدينين (balance > 0) مع زر "جدولة تذكير" لكل عميل. حوار يعرض المبلغ + منتقي التاريخ + قالب رسالة عربية قابل للتعديل يحوي اسم الزبون واسم المحل والمبلغ.
+- **بحث فوري**: صندوق بحث في أعلى الصفحة يفلتر بطاقات العملاء المدينين وجدول التذكيرات معاً بالاسم أو رقم الهاتف — عند سداد العميل يمكن البحث عن اسمه وحذف تذكيره بسرعة.
+- **تعديل اسم/رقم العميل**: أيقونة قلم على كل بطاقة عميل تفتح حوار تعديل الاسم والرقم. عند التحديث تُزامَن كل التذكيرات المرتبطة بذلك العميل تلقائياً في `debt_reminders` (customer_name + customer_phone).
+- **تذكيرات متكررة**: خيار جديد في حوار الجدولة (مرة واحدة / كل أسبوع / كل شهر). عند تعليم تذكير متكرر كـ"أُرسل" ينشئ الـ backend نسخة تالية تلقائياً على التاريخ الجديد (+7 أو +30 يوم) بحالة `pending` — يستمر التكرار للأبد حتى يحذفه المستخدم يدوياً. شارة بنفسجية 🔁 "أسبوعي/شهري" تظهر بجانب كل تذكير متكرر.
 - **جرس تنبيهات**: مكوّن `ReminderBell` في الشريط العلوي `AppShell` يستدعي `/api/debt-reminders/due-count` كل دقيقة ويعرض عدّاد أحمر مع نبض أمبر عندما تكون هناك تذكيرات مستحقة اليوم.
 - **إرسال بضغطة واحدة**: زر "واتساب" يفتح `wa.me/<phone>?text=<url-encoded>` بالرسالة الجاهزة، ثم يستدعي `PATCH /debt-reminders/{id}/mark-sent` تلقائياً لتحديث الحالة إلى "أُرسلت".
 - **Cron يومي**: `.emergent/crons.yml` يشغّل `POST /api/cron/debt-reminders` كل يوم 6 صباحاً بتوقيت القدس. الـ endpoint محمي بـ `WEBHOOK_CRON_SECRET` (401 بدون auth) ويرفع كل التذكيرات من `pending` إلى `due` عند حلول موعدها.
-- **Backend Collection جديدة**: `debt_reminders` — {id, shop_id, customer_id, customer_name, customer_phone, amount, scheduled_date, message, status, created_at, sent_at}. حالات: `pending`/`due`/`sent`.
+- **Backend Endpoints جديدة**: `PATCH /api/customers/{cid}` لتعديل اسم/رقم العميل مع مزامنة `debt_reminders`. حقل `repeat` مضاف لـ `debt_reminders` collection.
 
 ### Iteration 9 — Offline-First POS + Network Resilience (Aug 21, 2026)
 - **وضع الأوفلاين للـ POS**: عند انقطاع الإنترنت يُحمَّل POS من الذاكرة المحلية (منتجات/أصناف/مستودعات/فواتير معلّقة/وردية حالية) — كل شيء يتحدّث في `localStorage` بمفاتيح مسمّاة حسب `shop_id`.
