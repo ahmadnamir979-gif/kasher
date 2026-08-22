@@ -1,6 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { LogOut, ChevronLeft } from "lucide-react";
+import { ReminderBell } from "@/components/ReminderBell";
 
 export default function AppShell({ title, sidebar, children, subtitle, actions }) {
     const { user, logout } = useAuth();
@@ -30,7 +31,7 @@ export default function AppShell({ title, sidebar, children, subtitle, actions }
                         <h1 className="text-lg font-semibold text-slate-900">{title}</h1>
                         {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
                     </div>
-                    <div className="flex items-center gap-2">{actions}</div>
+                    <div className="flex items-center gap-2">{actions}<ReminderBell /></div>
                 </header>
                 <main className="flex-1 overflow-auto p-6">{children}</main>
             </div>

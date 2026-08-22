@@ -15,7 +15,14 @@
 - `shop_owner`: مالك المحل — كامل الصلاحيات داخل محله.
 - `cashier` / `accountant` / `manager`: موظفون داخل محل.
 
-## ما تمّ تنفيذه (Aug 21, 2026)
+## ما تمّ تنفيذه (Aug 22, 2026)
+
+### Iteration 10 — Debt Reminders + WhatsApp One-Click (Aug 22, 2026)
+- **صفحة `/reminders`**: قائمة العملاء المدينين (balance > 0) مع زر "جدولة تذكير" لكل عميل. حوار يعرض المبلغ + منتقي التاريخ + قالب رسالة عربية قابل للتعديل يحوي اسم الزبون واسم المحل والمبلغ.
+- **جرس تنبيهات**: مكوّن `ReminderBell` في الشريط العلوي `AppShell` يستدعي `/api/debt-reminders/due-count` كل دقيقة ويعرض عدّاد أحمر مع نبض أمبر عندما تكون هناك تذكيرات مستحقة اليوم.
+- **إرسال بضغطة واحدة**: زر "واتساب" يفتح `wa.me/<phone>?text=<url-encoded>` بالرسالة الجاهزة، ثم يستدعي `PATCH /debt-reminders/{id}/mark-sent` تلقائياً لتحديث الحالة إلى "أُرسلت".
+- **Cron يومي**: `.emergent/crons.yml` يشغّل `POST /api/cron/debt-reminders` كل يوم 6 صباحاً بتوقيت القدس. الـ endpoint محمي بـ `WEBHOOK_CRON_SECRET` (401 بدون auth) ويرفع كل التذكيرات من `pending` إلى `due` عند حلول موعدها.
+- **Backend Collection جديدة**: `debt_reminders` — {id, shop_id, customer_id, customer_name, customer_phone, amount, scheduled_date, message, status, created_at, sent_at}. حالات: `pending`/`due`/`sent`.
 
 ### Iteration 9 — Offline-First POS + Network Resilience (Aug 21, 2026)
 - **وضع الأوفلاين للـ POS**: عند انقطاع الإنترنت يُحمَّل POS من الذاكرة المحلية (منتجات/أصناف/مستودعات/فواتير معلّقة/وردية حالية) — كل شيء يتحدّث في `localStorage` بمفاتيح مسمّاة حسب `shop_id`.

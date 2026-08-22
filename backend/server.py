@@ -131,6 +131,12 @@ class SupplierIn(BaseModel):
     address: Optional[str] = ""
     opening_balance: float = 0
 
+class DebtReminderIn(BaseModel):
+    customer_id: str
+    amount: float
+    scheduled_date: str  # ISO date YYYY-MM-DD
+    message: Optional[str] = ""  # optional custom body
+
 class EmployeeIn(BaseModel):
     email: EmailStr
     name: str
@@ -536,6 +542,84 @@ async def create_supplier(data: SupplierIn, user=Depends(require_shop_user)):
 async def delete_supplier(sid_: str, user=Depends(require_shop_user)):
     await db.suppliers.delete_one({"id": sid_, "shop_id": sid(user)})
     return {"ok": True}
+
+# ---------- Debt Reminders ----------
+def _default_reminder_msg(shop_name: str, customer_name: str, amount: float) -> str:
+    return (f"مرحباً {customer_name}،\n"
+            f"هذا تذكير ودّي من *{shop_name}* بأن الرصيد المستحق عليكم هو *{amount:.2f}* شيكل.\n"
+            f"يرجى التكرم بالسداد في أقرب وقت.\nشكراً لتفهمكم 🌟")
+
+@api.get("/debt-reminders")
+async def list_reminders(status: Optional[str] = None, user=Depends(require_shop_user)):
+    q = {"shop_id": sid(user)}
+    if status: q["status"] = status
+    return await db.debt_reminders.find(q, {"_id": 0}).sort("scheduled_date", 1).to_list(2000)
+
+@api.get("/debt-reminders/due-count")
+async def due_count(user=Depends(require_shop_user)):
+    today = now_utc().date().isoformat()
+    n = await db.debt_reminders.count_documents({
+        "shop_id": sid(user), "status": "due",
+        "scheduled_date": {"$lte": today},
+    })
+    return {"count": n}
+
+@api.post("/debt-reminders")
+async def create_reminder(data: DebtReminderIn, user=Depends(require_shop_user)):
+    cust = await db.customers.find_one({"id": data.customer_id, "shop_id": sid(user)}, {"_id": 0})
+    if not cust: raise HTTPException(404, "العميل غير موجود")
+    shop = await db.shops.find_one({"id": sid(user)}, {"_id": 0})
+    msg = data.message.strip() if data.message else _default_reminder_msg(
+        shop.get("name", "المحل"), cust.get("name", ""), data.amount)
+    today = now_utc().date().isoformat()
+    doc = {
+        "id": new_id(), "shop_id": sid(user),
+        "customer_id": data.customer_id,
+        "customer_name": cust.get("name", ""),
+        "customer_phone": cust.get("phone", ""),
+        "amount": float(data.amount),
+        "scheduled_date": data.scheduled_date,
+        "message": msg,
+        "status": "due" if data.scheduled_date <= today else "pending",
+        "created_at": iso(now_utc()),
+        "sent_at": None,
+    }
+    await db.debt_reminders.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api.patch("/debt-reminders/{rid}/mark-sent")
+async def mark_sent(rid: str, user=Depends(require_shop_user)):
+    r = await db.debt_reminders.update_one(
+        {"id": rid, "shop_id": sid(user)},
+        {"$set": {"status": "sent", "sent_at": iso(now_utc())}})
+    if r.matched_count == 0: raise HTTPException(404, "غير موجود")
+    return {"ok": True}
+
+@api.delete("/debt-reminders/{rid}")
+async def delete_reminder(rid: str, user=Depends(require_shop_user)):
+    await db.debt_reminders.delete_one({"id": rid, "shop_id": sid(user)})
+    return {"ok": True}
+
+# ---------- Cron: promote pending reminders to 'due' ----------
+def _verify_cron_auth(request: Request):
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    auth = request.headers.get("authorization", "")
+    if not secret or not auth.startswith("Bearer "):
+        raise HTTPException(401, "unauthorized")
+    import hmac
+    if not hmac.compare_digest(auth[7:], secret):
+        raise HTTPException(401, "unauthorized")
+
+@api.post("/cron/debt-reminders")
+async def cron_debt_reminders(request: Request):
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    _verify_cron_auth(request)
+    today = now_utc().date().isoformat()
+    r = await db.debt_reminders.update_many(
+        {"status": "pending", "scheduled_date": {"$lte": today}},
+        {"$set": {"status": "due"}})
+    return {"ok": True, "promoted": r.modified_count}
 
 # ---------- Employees ----------
 @api.get("/employees")

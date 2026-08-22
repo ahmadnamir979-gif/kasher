@@ -1,6 +1,6 @@
 import { Routes, Route, useLocation, Navigate } from "react-router-dom";
 import AppShell, { SideLink } from "@/components/layout/AppShell";
-import { LayoutDashboard, ScanBarcode, Package, ShoppingCart, Truck, Users, UserCog, Receipt, BarChart3, Wallet, Clock, Warehouse, Tag, ArrowLeftRight, Wand2 } from "lucide-react";
+import { LayoutDashboard, ScanBarcode, Package, ShoppingCart, Truck, Users, UserCog, Receipt, BarChart3, Wallet, Clock, Warehouse, Tag, ArrowLeftRight, Wand2, BellRing } from "lucide-react";
 import POS from "@/pages/shop/POS";
 import Products from "@/pages/shop/Products";
 import Sales from "@/pages/shop/Sales";
@@ -16,6 +16,7 @@ import Warehouses from "@/pages/shop/Warehouses";
 import BarcodeLabels from "@/pages/shop/BarcodeLabels";
 import Transfers from "@/pages/shop/Transfers";
 import Migration from "@/pages/shop/Migration";
+import Reminders from "@/pages/shop/Reminders";
 import { RenewSuccess, RenewCancel } from "@/pages/shop/Renew";
 
 const nav = [
@@ -29,6 +30,7 @@ const nav = [
     { to: "/sales", icon: ShoppingCart, label: "المبيعات والمرتجعات" },
     { to: "/purchases", icon: Truck, label: "المشتريات" },
     { to: "/customers", icon: Users, label: "العملاء" },
+    { to: "/reminders", icon: BellRing, label: "تذكيرات الديون" },
     { to: "/suppliers", icon: Truck, label: "الموردين" },
     { to: "/employees", icon: UserCog, label: "الموظفين" },
     { to: "/expenses", icon: Wallet, label: "المصاريف" },
@@ -60,6 +62,7 @@ export default function ShopApp() {
                 <Route path="sales" element={<Sales />} />
                 <Route path="purchases" element={<Purchases />} />
                 <Route path="customers" element={<Customers />} />
+                <Route path="reminders" element={<Reminders />} />
                 <Route path="suppliers" element={<Suppliers />} />
                 <Route path="employees" element={<Employees />} />
                 <Route path="expenses" element={<Expenses />} />
