@@ -3,9 +3,10 @@ import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { Printer, CheckCircle2, ExternalLink, Package, Info, Monitor, RefreshCw } from "lucide-react";
+import { Printer, CheckCircle2, ExternalLink, Package, Info, Monitor, RefreshCw, Download, Upload, Database, ShieldCheck, AlertTriangle } from "lucide-react";
 import { printReceipt } from "@/components/Receipt";
 import { isDesktop, desktopAPI, silentPrintHTML } from "@/lib/desktop";
+import { api, formatApiError, API_URL } from "@/lib/api";
 
 const PREF_KEYS = {
     autoPrint: "pos_auto_print",
@@ -21,9 +22,16 @@ export default function Settings() {
     const [printerName, setPrinterName] = useState(loadPref(PREF_KEYS.printerName));
     const [paperSize, setPaperSize] = useState(loadPref(PREF_KEYS.paperSize, "80mm"));
     const [copies, setCopies] = useState(+loadPref(PREF_KEYS.copies, "1"));
-    const [printers, setPrinters] = useState([]);      // desktop only
+    const [printers, setPrinters] = useState([]);
     const [refreshing, setRefreshing] = useState(false);
     const [autoLaunch, setAutoLaunch] = useState(true);
+    // Backup state
+    const [backupSummary, setBackupSummary] = useState(null);
+    const [restoreFile, setRestoreFile] = useState(null);
+    const [restoreMode, setRestoreMode] = useState("merge");
+    const [restoring, setRestoring] = useState(false);
+    const [restoreResult, setRestoreResult] = useState(null);
+    const [downloading, setDownloading] = useState(false);
 
     // Load OS-level printers if running in Electron desktop app
     const loadPrinters = async () => {
@@ -42,6 +50,52 @@ export default function Settings() {
         setRefreshing(false);
     };
     useEffect(() => { loadPrinters(); /* eslint-disable-next-line */ }, []);
+
+    // Load backup summary
+    const loadBackupSummary = async () => {
+        try { const { data } = await api.get("/backup/summary"); setBackupSummary(data); }
+        catch (e) { /* silent */ }
+    };
+    useEffect(() => { loadBackupSummary(); }, []);
+
+    const downloadBackup = async () => {
+        setDownloading(true);
+        try {
+            const res = await api.get("/backup/export", { responseType: "blob" });
+            const url = window.URL.createObjectURL(res.data);
+            const a = document.createElement("a");
+            a.href = url;
+            const shopSlug = (user?.shop?.name || "shop").replace(/\s+/g, "_");
+            const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
+            a.download = `backup-${shopSlug}-${stamp}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            toast.success("تمّ تحميل النسخة الاحتياطية بنجاح ✓");
+        } catch (e) { toast.error(formatApiError(e)); }
+        finally { setDownloading(false); }
+    };
+
+    const doRestore = async () => {
+        if (!restoreFile) return toast.error("اختر ملف النسخة الاحتياطية أولاً");
+        if (restoreMode === "replace" && !window.confirm(
+            "⚠️ وضع الاستعادة الكامل سيحذف كل بيانات المحل الحالية ويستبدلها بمحتوى الملف. متأكد؟"
+        )) return;
+        setRestoring(true); setRestoreResult(null);
+        try {
+            const form = new FormData();
+            form.append("file", restoreFile);
+            const { data } = await api.post(`/backup/restore?mode=${restoreMode}`, form, {
+                headers: { "Content-Type": "multipart/form-data" },
+            });
+            setRestoreResult(data);
+            toast.success("تمّت الاستعادة بنجاح — أُعيد تحميل بيانات المحل");
+            setRestoreFile(null);
+            loadBackupSummary();
+        } catch (e) { toast.error(formatApiError(e)); }
+        finally { setRestoring(false); }
+    };
 
     // Persist all prefs to localStorage AND to electron-store (desktop)
     useEffect(() => {
@@ -93,6 +147,109 @@ export default function Settings() {
                     {isDesktop ? "Desktop" : "Web"}
                 </span>
             </div>
+
+            {/* Backup & Restore */}
+            <section className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
+                <header className="flex items-center gap-3 px-5 h-14 border-b border-zinc-200 bg-gradient-to-l from-emerald-50 to-white">
+                    <Database className="w-5 h-5 text-emerald-600" />
+                    <h2 className="font-semibold text-slate-900">النسخ الاحتياطي — بيانات محلي فقط</h2>
+                    <div className="flex-1" />
+                    <div className="text-xs text-slate-500 flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> بيانات محلك معزولة عن أي محل آخر</div>
+                </header>
+                <div className="p-5 space-y-5">
+                    {/* Summary */}
+                    {backupSummary && (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            {[
+                                { k: "products", label: "منتجات" },
+                                { k: "sales", label: "فواتير" },
+                                { k: "customers", label: "عملاء" },
+                                { k: "suppliers", label: "موردين" },
+                                { k: "categories", label: "أصناف" },
+                                { k: "warehouses", label: "مخازن" },
+                                { k: "shifts", label: "ورديات" },
+                                { k: "expenses", label: "مصاريف" },
+                            ].map(o => (
+                                <div key={o.k} className="p-3 rounded-md bg-zinc-50 border border-zinc-200">
+                                    <div className="text-[11px] text-slate-500 mb-0.5">{o.label}</div>
+                                    <div className="tabular-nums text-lg font-bold text-slate-900">{backupSummary.totals?.[o.k] ?? 0}</div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Download */}
+                    <div className="p-4 rounded-md border-2 border-emerald-200 bg-emerald-50/50">
+                        <div className="flex items-start gap-3">
+                            <Download className="w-6 h-6 text-emerald-600 shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                                <div className="font-bold text-slate-900 mb-1">تحميل نسخة احتياطية كاملة</div>
+                                <p className="text-xs text-slate-600 leading-relaxed">يتم تصدير كل بيانات محلك (منتجات، فواتير، عملاء، ديون، أصناف، مخازن، ورديات، مصاريف...) في ملف ZIP واحد يمتلكه محلك فقط. احتفظ به على جهازك أو على فلاش/سحابة لأي طارئ.</p>
+                                <Button onClick={downloadBackup} disabled={downloading} data-testid="backup-download-btn"
+                                    className="mt-3 bg-emerald-600 hover:bg-emerald-700 text-white gap-2">
+                                    <Download className="w-4 h-4" /> {downloading ? "جارٍ التصدير…" : "حمّل النسخة الاحتياطية الآن"}
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Restore */}
+                    <div className="p-4 rounded-md border-2 border-amber-200 bg-amber-50/40">
+                        <div className="flex items-start gap-3">
+                            <Upload className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                                <div className="font-bold text-slate-900 mb-1">استعادة نسخة احتياطية</div>
+                                <p className="text-xs text-slate-600 leading-relaxed">ارفع ملف <span className="font-mono bg-white px-1.5 rounded">backup-*.zip</span> الذي حمّلته سابقاً. سيتم استيراد بياناته إلى محلك فقط.</p>
+                                <div className="mt-3 space-y-2">
+                                    {/* File picker */}
+                                    <input type="file" accept=".zip" onChange={(e) => { setRestoreFile(e.target.files?.[0] || null); setRestoreResult(null); }}
+                                        data-testid="backup-file-input"
+                                        className="block w-full text-xs text-slate-700 file:mr-3 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-slate-900 file:text-white hover:file:bg-slate-800 file:cursor-pointer" />
+                                    {restoreFile && (
+                                        <div className="text-xs text-slate-700 bg-white border border-zinc-200 rounded-md px-3 py-2 flex items-center gap-2">
+                                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                            <span className="font-mono">{restoreFile.name}</span>
+                                            <span className="text-slate-500">— {(restoreFile.size / 1024).toFixed(1)} KB</span>
+                                        </div>
+                                    )}
+                                    {/* Mode */}
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button onClick={() => setRestoreMode("merge")} data-testid="restore-mode-merge"
+                                            className={`p-3 rounded-md border text-right transition-all ${restoreMode === "merge" ? "bg-sky-600 text-white border-sky-700 shadow" : "bg-white border-zinc-200 hover:border-sky-400"}`}>
+                                            <div className="font-bold text-sm mb-0.5">دمج (Merge) — الأكثر أماناً</div>
+                                            <div className={`text-[11px] ${restoreMode === "merge" ? "text-white/80" : "text-slate-500"}`}>يحدّث الموجود ويضيف الجديد. لا يحذف شيئاً.</div>
+                                        </button>
+                                        <button onClick={() => setRestoreMode("replace")} data-testid="restore-mode-replace"
+                                            className={`p-3 rounded-md border text-right transition-all ${restoreMode === "replace" ? "bg-rose-600 text-white border-rose-700 shadow" : "bg-white border-zinc-200 hover:border-rose-400"}`}>
+                                            <div className="font-bold text-sm mb-0.5 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> استبدال كامل (Replace)</div>
+                                            <div className={`text-[11px] ${restoreMode === "replace" ? "text-white/80" : "text-slate-500"}`}>يحذف كل البيانات الحالية ثم يستورد. لا يمكن التراجع.</div>
+                                        </button>
+                                    </div>
+                                    <Button onClick={doRestore} disabled={!restoreFile || restoring} data-testid="backup-restore-btn"
+                                        className="w-full bg-amber-600 hover:bg-amber-700 text-white gap-2">
+                                        <Upload className="w-4 h-4" /> {restoring ? "جارٍ الاستعادة…" : "ابدأ الاستعادة"}
+                                    </Button>
+                                    {restoreResult && (
+                                        <div className="p-3 rounded-md bg-emerald-50 border border-emerald-300 text-xs">
+                                            <div className="font-bold text-emerald-900 mb-1 flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> نتائج الاستعادة</div>
+                                            <div className="text-emerald-800">من محل: <b>{restoreResult.source_shop_name || "—"}</b> — تاريخ التصدير: {restoreResult.source_exported_at?.substring(0, 10)}</div>
+                                            <div className="grid grid-cols-3 gap-1.5 mt-2">
+                                                {Object.entries(restoreResult.restored || {}).map(([k, v]) => (
+                                                    <div key={k} className="bg-white rounded px-2 py-1 border border-emerald-200"><span className="text-slate-500">{k}:</span> <b className="tabular-nums">{v}</b></div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <p className="text-[11px] text-slate-500 leading-relaxed border-t pt-3">
+                        💡 <b>نصيحة:</b> احفظ نسخة احتياطية أسبوعياً على الأقل. الملف يمتلكه محلك فقط ولا يحتوي بيانات محلات أخرى. لا يمكن استخدامه لسرقة بيانات محل ثانٍ — عند الاستعادة يُثبَّت `shop_id` تلقائياً على محلك الحالي.
+                    </p>
+                </div>
+            </section>
 
             {/* Printer Settings */}
             <section className="bg-white border border-zinc-200 rounded-lg overflow-hidden">

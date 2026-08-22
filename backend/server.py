@@ -23,6 +23,7 @@ from emergentintegrations.payments.stripe.checkout import (
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 import json as _json
 import csv as _csv
+import zipfile as _zipfile
 
 # ---------- Setup ----------
 mongo_url = os.environ['MONGO_URL']
@@ -648,6 +649,120 @@ async def mark_sent(rid: str, user=Depends(require_shop_user)):
 async def delete_reminder(rid: str, user=Depends(require_shop_user)):
     await db.debt_reminders.delete_one({"id": rid, "shop_id": sid(user)})
     return {"ok": True}
+
+# ---------- Backup / Restore (per shop) ----------
+# Collections that belong to a shop (never include users/shops/counters/global tables).
+BACKUP_COLLECTIONS = [
+    "categories", "products", "warehouses", "transfers",
+    "customers", "suppliers", "sales", "purchases",
+    "expenses", "shifts", "held_invoices", "debt_reminders",
+    "migration_templates", "migration_batches",
+]
+
+def _default_json(o):
+    from datetime import datetime as _dt
+    if isinstance(o, _dt): return o.isoformat()
+    return str(o)
+
+@api.get("/backup/export")
+async def backup_export(user=Depends(require_shop_user)):
+    shop_id = sid(user)
+    shop = await db.shops.find_one({"id": shop_id}, {"_id": 0}) or {"id": shop_id}
+    buf = io.BytesIO()
+    with _zipfile.ZipFile(buf, "w", _zipfile.ZIP_DEFLATED) as zf:
+        manifest = {
+            "shop_id": shop_id,
+            "shop_name": shop.get("name", ""),
+            "exported_at": iso(now_utc()),
+            "exported_by": user.get("email"),
+            "version": 1,
+            "collections": BACKUP_COLLECTIONS,
+        }
+        zf.writestr("manifest.json", _json.dumps(manifest, ensure_ascii=False, indent=2))
+        zf.writestr("shop.json", _json.dumps(shop, ensure_ascii=False, indent=2, default=_default_json))
+        totals = {}
+        for coll in BACKUP_COLLECTIONS:
+            docs = await db[coll].find({"shop_id": shop_id}, {"_id": 0}).to_list(1000000)
+            totals[coll] = len(docs)
+            zf.writestr(f"{coll}.json", _json.dumps(docs, ensure_ascii=False, indent=2, default=_default_json))
+        zf.writestr("totals.json", _json.dumps(totals, ensure_ascii=False, indent=2))
+    data = buf.getvalue()
+    from urllib.parse import quote as _q
+    raw_name = (shop.get("name") or "shop")
+    safe_ascii = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in raw_name.encode("ascii", "ignore").decode() or "shop")
+    stamp = now_utc().strftime("%Y%m%d-%H%M")
+    ascii_fn = f"backup-{safe_ascii or 'shop'}-{stamp}.zip"
+    utf8_fn = f"backup-{raw_name}-{stamp}.zip"
+    disp = f"attachment; filename=\"{ascii_fn}\"; filename*=UTF-8''{_q(utf8_fn)}"
+    return Response(
+        content=data, media_type="application/zip",
+        headers={"Content-Disposition": disp},
+    )
+
+@api.get("/backup/summary")
+async def backup_summary(user=Depends(require_shop_user)):
+    shop_id = sid(user)
+    out = {}
+    for coll in BACKUP_COLLECTIONS:
+        out[coll] = await db[coll].count_documents({"shop_id": shop_id})
+    return {"shop_id": shop_id, "totals": out, "total": sum(out.values())}
+
+@api.post("/backup/restore")
+async def backup_restore(
+    mode: str = "merge",  # "merge" (upsert by id) or "replace" (wipe shop data then insert)
+    file: UploadFile = File(...),
+    user=Depends(require_shop_user),
+):
+    shop_id = sid(user)
+    if mode not in ("merge", "replace"):
+        raise HTTPException(400, "mode must be merge or replace")
+    contents = await file.read()
+    try:
+        zf = _zipfile.ZipFile(io.BytesIO(contents))
+    except _zipfile.BadZipFile:
+        raise HTTPException(400, "الملف ليس ZIP صحيحاً")
+
+    # Verify manifest
+    try:
+        manifest = _json.loads(zf.read("manifest.json").decode("utf-8"))
+    except Exception:
+        raise HTTPException(400, "لا يمكن قراءة manifest.json — الملف ليس نسخة احتياطية صالحة")
+
+    if not manifest.get("collections"):
+        raise HTTPException(400, "manifest غير صالح")
+
+    stats = {"restored": {}, "errors": []}
+    for coll in BACKUP_COLLECTIONS:
+        member = f"{coll}.json"
+        if member not in zf.namelist():
+            continue
+        try:
+            docs = _json.loads(zf.read(member).decode("utf-8"))
+        except Exception as e:
+            stats["errors"].append(f"{coll}: {e}")
+            continue
+
+        if mode == "replace":
+            await db[coll].delete_many({"shop_id": shop_id})
+        count = 0
+        for d in docs:
+            # Force the shop_id to the current user's shop — even if the backup came
+            # from a different shop, prevent cross-tenant contamination.
+            d["shop_id"] = shop_id
+            if not d.get("id"):
+                d["id"] = new_id()
+            await db[coll].update_one(
+                {"id": d["id"], "shop_id": shop_id},
+                {"$set": d},
+                upsert=True,
+            )
+            count += 1
+        stats["restored"][coll] = count
+    stats["mode"] = mode
+    stats["shop_id"] = shop_id
+    stats["source_shop_name"] = manifest.get("shop_name")
+    stats["source_exported_at"] = manifest.get("exported_at")
+    return stats
 
 # ---------- Cron: promote pending reminders to 'due' ----------
 def _verify_cron_auth(request: Request):

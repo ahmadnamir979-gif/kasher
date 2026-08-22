@@ -17,6 +17,13 @@
 
 ## ما تمّ تنفيذه (Aug 22, 2026)
 
+### Iteration 19 — Per-Shop Backup & Restore (Aug 22, 2026)
+- Added 3 backend endpoints in `server.py`: `GET /api/backup/summary` (per-shop counts), `GET /api/backup/export` (streams a ZIP with 14 collection JSON files + `manifest.json` + `shop.json` + `totals.json` scoped to `shop_id`), `POST /api/backup/restore?mode=merge|replace` (accepts ZIP upload; `merge` upserts by `id`, `replace` wipes shop data then inserts).
+- Security: on restore, `shop_id` is **forced** to the current user's shop for every doc — cross-tenant contamination is impossible even if a malicious backup file is uploaded.
+- UTF-8 Arabic filenames encoded via RFC 5987 `Content-Disposition: attachment; filename*=UTF-8''...`; ASCII fallback for older browsers.
+- Frontend Settings page now has a "النسخ الاحتياطي" section: live totals dashboard (products/sales/customers/…), one-tap download button, file-picker + mode selector (Merge/Replace with confirm dialog for destructive), and a post-restore result panel showing per-collection counts + source shop name/date.
+- Verified end-to-end: exported 15KB ZIP with 17 files → re-uploaded via restore → 134 documents restored across 14 collections with zero errors.
+
 ### Iteration 18 — Real Electron Desktop App (Aug 22, 2026)
 - Built a fully working Electron 32 wrapper in `/app/desktop`: `main.js` opens the app, handles IPC for silent print (`webContents.print({ silent:true, deviceName })`), auto-launch, and `electron-updater` auto-updates from GitHub Releases.
 - `preload.js` exposes a safe `window.desktopAPI` (`isDesktop`, `listPrinters`, `getSettings`, `setSettings`, `silentPrint`).
