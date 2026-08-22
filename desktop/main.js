@@ -9,7 +9,7 @@ const { autoUpdater } = require("electron-updater");
 const store = new Store({
     name: "al-arraab-settings",
     defaults: {
-        appUrl: process.env.AL_ARRAAB_URL || "https://point-control-2.preview.emergentagent.com",
+        appUrl: process.env.AL_ARRAAB_URL || "https://al3rab.shop",
         printerName: "",
         paperSize: "80mm",
         autoPrint: true,
