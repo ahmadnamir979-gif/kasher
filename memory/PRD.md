@@ -17,6 +17,12 @@
 
 ## ما تمّ تنفيذه (Aug 22, 2026)
 
+### Iteration 17 — Settings Page + Printer Config (Aug 22, 2026)
+- New `/settings` page with a dedicated "إعدادات الطابعة" section: auto-print toggle, default printer name field, paper size (58mm / 80mm / A4), copies-per-invoice (1-5) with +/− stepper, and a "طباعة إيصال تجريبي الآن" test button that renders a live sample slip.
+- Preferences saved in `localStorage` (`pos_auto_print`, `pos_printer_name`, `pos_paper_size`, `pos_print_copies`); POS reads them on every sale and loops copies with staggered timing.
+- Removed the top-bar auto-print toggle from POS — the whole config now lives on Settings.
+- Added a "برنامج مثبّت لكل محل" section explaining the Electron/Tauri desktop-app path with a WhatsApp order button, so the shop can request an installable binary when ready.
+
 ### Iteration 16 — Auto-Print to Connected Printer (Aug 22, 2026)
 - POS top bar now shows an "طباعة تلقائية" toggle (green when on) + a help (؟) icon that opens Arabic instructions for Chrome silent printing (`--kiosk-printing`).
 - Preference persisted in `localStorage.pos_auto_print`; when enabled, every successful sale calls `printReceipt("receipt-print-area")` automatically 250ms after the receipt dialog appears.

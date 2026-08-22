@@ -1,6 +1,6 @@
 import { Routes, Route, useLocation, Navigate } from "react-router-dom";
 import AppShell, { SideLink } from "@/components/layout/AppShell";
-import { LayoutDashboard, ScanBarcode, Package, ShoppingCart, Truck, Users, UserCog, Receipt, BarChart3, Wallet, Clock, Warehouse, Tag, ArrowLeftRight, Wand2, BellRing } from "lucide-react";
+import { LayoutDashboard, ScanBarcode, Package, ShoppingCart, Truck, Users, UserCog, Receipt, BarChart3, Wallet, Clock, Warehouse, Tag, ArrowLeftRight, Wand2, BellRing, Settings as SettingsIcon } from "lucide-react";
 import POS from "@/pages/shop/POS";
 import Products from "@/pages/shop/Products";
 import Sales from "@/pages/shop/Sales";
@@ -17,6 +17,7 @@ import BarcodeLabels from "@/pages/shop/BarcodeLabels";
 import Transfers from "@/pages/shop/Transfers";
 import Migration from "@/pages/shop/Migration";
 import Reminders from "@/pages/shop/Reminders";
+import Settings from "@/pages/shop/Settings";
 import { RenewSuccess, RenewCancel } from "@/pages/shop/Renew";
 
 const nav = [
@@ -36,6 +37,7 @@ const nav = [
     { to: "/expenses", icon: Wallet, label: "المصاريف" },
     { to: "/shifts", icon: Clock, label: "الورديات" },
     { to: "/reports", icon: BarChart3, label: "التقارير" },
+    { to: "/settings", icon: SettingsIcon, label: "الإعدادات" },
 ];
 
 function Sidebar() {
@@ -68,6 +70,7 @@ export default function ShopApp() {
                 <Route path="expenses" element={<Expenses />} />
                 <Route path="shifts" element={<Shifts />} />
                 <Route path="reports" element={<Reports />} />
+                <Route path="settings" element={<Settings />} />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
         </AppShell>
