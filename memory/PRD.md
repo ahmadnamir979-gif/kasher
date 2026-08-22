@@ -17,6 +17,11 @@
 
 ## ما تمّ تنفيذه (Aug 22, 2026)
 
+### Iteration 16 — Auto-Print to Connected Printer (Aug 22, 2026)
+- POS top bar now shows an "طباعة تلقائية" toggle (green when on) + a help (؟) icon that opens Arabic instructions for Chrome silent printing (`--kiosk-printing`).
+- Preference persisted in `localStorage.pos_auto_print`; when enabled, every successful sale calls `printReceipt("receipt-print-area")` automatically 250ms after the receipt dialog appears.
+- Free 100% — works with any OS-registered printer (80mm thermal or A4). No SDK, no cloud service, no per-print fees.
+
 ### Iteration 15 — Remove duplicate WA button (Aug 22, 2026)
 - Removed the emerald "واتساب للزبون" button from the POS bottom action bar; WhatsApp send is now available only from the "تمّ حفظ الفاتورة" dialog to avoid confusion. Bottom grid rebalanced to 8 columns.
 

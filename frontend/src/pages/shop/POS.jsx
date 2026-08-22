@@ -11,7 +11,7 @@ import {
     Home, Archive, Wallet, Keyboard, RefreshCw, X, Trash2, LogOut,
     Save, Printer, ReceiptText, Gift, DollarSign, FileText, Undo2,
     Boxes, Package as PackageIcon, Search, MessageCircle, PauseCircle, PlayCircle,
-    UserPlus, HandCoins, Delete
+    UserPlus, HandCoins, Delete, HelpCircle
 } from "lucide-react";
 import { ReceiptPreview, printReceipt } from "@/components/Receipt";
 import { ShiftBadge, ShiftManager } from "@/components/ShiftManager";
@@ -80,6 +80,9 @@ export default function POS() {
     const [heldOpen, setHeldOpen] = useState(false);
     const [heldPrintPreview, setHeldPrintPreview] = useState(null);
     const [quickAdd, setQuickAdd] = useState(null);
+    const [autoPrint, setAutoPrint] = useState(() => localStorage.getItem("pos_auto_print") === "1");
+    const [printHelp, setPrintHelp] = useState(false);
+    useEffect(() => { localStorage.setItem("pos_auto_print", autoPrint ? "1" : "0"); }, [autoPrint]);
     const [now, setNow] = useState(new Date());
     const searchRef = useRef(null);
 
@@ -274,6 +277,7 @@ export default function POS() {
             setLastSale(data); setReceiptOpen(true);
             setCart([]); setDiscount(0);
             refresh();
+            if (autoPrint) setTimeout(() => printReceipt("receipt-print-area"), 250);
         } catch (e) {
             if (isNetworkError(e)) {
                 // Save locally, generate a temporary receipt so cashier can print
@@ -418,6 +422,18 @@ export default function POS() {
                     <div><div className="text-slate-400 text-[10px]">اختصارات</div><div className="font-bold">F1 نقد • F2 بطاقة</div></div>
                 </div>
                 <ShiftBadge shift={shift} onOpen={() => setShiftDlg(true)} onClose={() => setShiftDlg(true)} />
+                <button onClick={() => setAutoPrint(v => !v)} data-testid="auto-print-toggle"
+                    className={`h-11 px-3 rounded-md text-xs font-semibold flex items-center gap-2 border shadow-sm transition-colors ${autoPrint ? "bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600" : "bg-slate-700 hover:bg-slate-600 text-white border-slate-500"}`}
+                    title={autoPrint ? "طباعة تلقائية مفعّلة" : "طباعة تلقائية معطّلة"}>
+                    <Printer className="w-4 h-4" />
+                    <div className="text-right leading-tight">
+                        <div className="text-[9px] opacity-80">طباعة تلقائية</div>
+                        <div className="tabular-nums font-bold">{autoPrint ? "مفعّلة" : "معطّلة"}</div>
+                    </div>
+                </button>
+                <button onClick={() => setPrintHelp(true)} data-testid="auto-print-help"
+                    className="h-11 w-9 rounded-md bg-slate-950/40 border border-slate-700 text-amber-300 hover:bg-slate-800 flex items-center justify-center"
+                    title="كيف تُفعّل الطباعة الصامتة"><HelpCircle className="w-4 h-4" /></button>
                 <OfflineBadge shopId={shopId} syncing={syncing} onSyncNow={syncQueue} />
                 <button onClick={() => setHeldOpen(true)} data-testid="held-invoices-btn"
                     className="h-11 px-3 rounded-md bg-fuchsia-500 hover:bg-fuchsia-600 text-white text-sm font-semibold flex items-center gap-2 transition-colors shadow-sm">
@@ -817,8 +833,7 @@ export default function POS() {
             </Dialog>
 
             {/* Quick-add unknown barcode dialog */}
-            <Dialog open={!!quickAdd} onOpenChange={(o) => !o && setQuickAdd(null)}>
-                <DialogContent dir="rtl" className="bg-white">
+            <Dialog open={!!quickAdd} onOpenChange={(o) => !o && setQuickAdd(null)}>                <DialogContent dir="rtl" className="bg-white">
                     <DialogHeader><DialogTitle>باركود غير معروف — إضافة منتج جديد</DialogTitle></DialogHeader>
                     {quickAdd && (
                         <div className="space-y-3">
@@ -910,6 +925,41 @@ export default function POS() {
                     )}
                 </div>
             </div>
+
+            {/* Auto-print help dialog */}
+            <Dialog open={printHelp} onOpenChange={setPrintHelp}>
+                <DialogContent dir="rtl" className="bg-white max-w-lg">
+                    <DialogHeader><DialogTitle className="flex items-center gap-2"><Printer className="w-5 h-5 text-emerald-600" /> الطباعة التلقائية للطابعة</DialogTitle></DialogHeader>
+                    <div className="space-y-4 text-sm text-slate-800 leading-relaxed">
+                        <div className="p-3 rounded-md bg-emerald-50 border border-emerald-200">
+                            <p className="font-semibold text-emerald-900 mb-1">الميزة مبنية جاهزة ✅</p>
+                            <p className="text-xs text-emerald-800">فعّل زر "طباعة تلقائية" أعلى الشاشة، وسيُطبع الإيصال فور حفظ كل فاتورة.</p>
+                        </div>
+                        <div>
+                            <p className="font-bold mb-2">لطباعة صامتة 100% (بدون نافذة تأكيد):</p>
+                            <ol className="list-decimal pr-5 space-y-2 text-xs">
+                                <li>افتح المتصفح <b>Google Chrome</b> على الجهاز.</li>
+                                <li>اذهب إلى <span dir="ltr" className="font-mono bg-slate-100 px-1.5 py-0.5 rounded">chrome://settings/printing</span> واختر طابعة الإيصالات كطابعة افتراضية.</li>
+                                <li>أغلق كل نوافذ Chrome، ثمّ افتح Chrome من اختصار جديد يحوي علم:
+                                    <div dir="ltr" className="font-mono bg-slate-900 text-emerald-300 text-[11px] p-2 rounded mt-1 select-all overflow-x-auto">chrome --kiosk-printing --app=https://point-control-2.preview.emergentagent.com</div>
+                                </li>
+                                <li>افتح نقطة البيع من نفس الاختصار — أي طباعة ستذهب مباشرة للطابعة دون سؤال.</li>
+                            </ol>
+                        </div>
+                        <div className="p-3 rounded-md bg-amber-50 border border-amber-200 text-xs">
+                            <p className="font-semibold text-amber-900 mb-1">نصائح للطابعات الحرارية 80mm:</p>
+                            <ul className="list-disc pr-5 space-y-1 text-amber-800">
+                                <li>تأكد أن الطابعة مركّبة وظاهرة في إعدادات النظام (Windows / macOS / Linux).</li>
+                                <li>حجم الورق في إعدادات الطابعة: 80×297mm (أو Roll 80).</li>
+                                <li>Margins: صفر لكل الجهات.</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button onClick={() => setPrintHelp(false)} className="bg-slate-900 hover:bg-slate-800 text-white">فهمت</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
