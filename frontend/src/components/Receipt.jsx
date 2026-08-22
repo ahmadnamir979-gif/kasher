@@ -24,7 +24,7 @@ export function ReceiptPreview({ shop, sale, cashierName, kind = "sale" }) {
             )}
             <div style={{ borderTop: "1px dashed #000", borderBottom: "1px dashed #000", padding: "4px 0", marginBottom: "6px", fontSize: "11px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between" }}><span>{title}</span><span className="tabular-nums">{sale.invoice_no ? `#${sale.invoice_no}` : (sale.label || "")}</span></div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}><span>التاريخ</span><span className="tabular-nums">{dt.toLocaleString("ar-EG")}</span></div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}><span>التاريخ</span><span className="tabular-nums">{dt.toLocaleString("en-GB")}</span></div>
                 <div style={{ display: "flex", justifyContent: "space-between" }}><span>الكاشير</span><span>{cashierName || sale.cashier_name || sale.user_name}</span></div>
                 <div style={{ display: "flex", justifyContent: "space-between" }}><span>الزبون</span><span>{sale.customer_name || "نقدي"}</span></div>
             </div>

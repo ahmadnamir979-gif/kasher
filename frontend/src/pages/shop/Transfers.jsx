@@ -51,7 +51,7 @@ export default function Transfers() {
 
     const printVoucher = (t) => {
         const w = window.open("", "PRINT", "width=800,height=1000");
-        const now = new Date().toLocaleString("ar-EG");
+        const now = new Date().toLocaleString("en-GB");
         const rows = t.items.map((it, i) => `<tr><td>${i+1}</td><td>${it.name}</td><td>${it.qty}</td></tr>`).join("");
         w.document.write(`<html dir="rtl"><head><title>Transfer #${t.transfer_no}</title>
             <style>

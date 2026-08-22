@@ -17,6 +17,10 @@
 
 ## ما تمّ تنفيذه (Aug 22, 2026)
 
+### Iteration 12 — English digits site-wide (Aug 22, 2026)
+- Switched `fmt`/`fmtInt` in `/lib/api.js` from `ar-EG` locale to `en-US` so every price/qty/balance/invoice number renders with Latin digits (e.g. `755.00` instead of `٧٥٥٫٠٠`).
+- Aligned every date/time formatter in POS, Receipt, and Transfers to `en-GB` so dates read `22/08/2026 00:29`.
+
 ### Iteration 11 — الديون والذمم + ترحيل الفاتورة على دين (Aug 22, 2026)
 - **إعادة تسمية الصفحة**: "تذكيرات الديون" → **"الديون والذمم"** في القائمة الجانبية وترويسة الصفحة.
 - **بطاقات إحصائية**: إجمالي الديون + عدد المدينين + عدد التذكيرات المستحقة اليوم في أعلى الصفحة.

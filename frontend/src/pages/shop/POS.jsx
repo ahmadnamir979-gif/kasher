@@ -354,7 +354,7 @@ export default function POS() {
         if (!phone) return toast.error("أدخل رقم صحيح");
         const shopName = user?.shop?.name || "المحل";
         const items = lastSale.items.map(it => `• ${it.name} × ${it.qty} = ${fmt(it.qty*it.price)}`).join("\n");
-        const msg = `*${shopName}*\nفاتورة #${lastSale.invoice_no}\n${new Date(lastSale.created_at).toLocaleString("ar-EG")}\n\n${items}\n\n*الإجمالي: ${fmt(lastSale.total)}*\nشكراً لتسوقكم معنا 🌟`;
+        const msg = `*${shopName}*\nفاتورة #${lastSale.invoice_no}\n${new Date(lastSale.created_at).toLocaleString("en-GB")}\n\n${items}\n\n*الإجمالي: ${fmt(lastSale.total)}*\nشكراً لتسوقكم معنا 🌟`;
         window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
         setWaOpen(false); setWaPhone("");
     };
@@ -427,7 +427,7 @@ export default function POS() {
                 <TopBtn icon={RefreshCw} label="تحديث" color="emerald" onClick={refresh} testid="pos-refresh-btn" />
                 <div className="text-white text-xs bg-slate-950/40 rounded px-3 py-1.5 border border-slate-700 tabular-nums">
                     <div className="text-slate-400 text-[10px]">{now.toLocaleDateString("en-GB")}</div>
-                    <div className="font-bold">{now.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" })}</div>
+                    <div className="font-bold">{now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</div>
                 </div>
                 <button onClick={async () => { await logout(); nav("/login"); }} data-testid="pos-logout-btn"
                     className="h-11 px-3 rounded-md bg-slate-700 hover:bg-slate-600 text-white text-sm flex items-center gap-2"><LogOut className="w-4 h-4" /> خروج</button>

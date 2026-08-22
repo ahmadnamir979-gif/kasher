@@ -27,5 +27,5 @@ export function formatApiError(err) {
 
 export { isNetworkError };
 
-export const fmt = (n) => Number(n || 0).toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-export const fmtInt = (n) => Number(n || 0).toLocaleString("ar-EG");
+export const fmt = (n) => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+export const fmtInt = (n) => Number(n || 0).toLocaleString("en-US");
