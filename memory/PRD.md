@@ -17,6 +17,13 @@
 
 ## ما تمّ تنفيذه (Aug 22, 2026)
 
+### Iteration 21 — Rebrand to "العرّاب" (Al-Arraab) + Premium Login (Aug 22, 2026)
+- **Full rebrand**: App name changed everywhere from "Misk POS" to **"العرّاب"** (Al-Arraab). Files touched: `Login.jsx`, `Activate.jsx`, `Settings.jsx`, `public/index.html` title, `desktop/package.json` (`appId: com.alarraab.pos`, `productName: Al-Arraab`, `shortcutName`), `desktop/main.js` (window title, store name, env var).
+- **New premium Login page**: Dark `#0a0a0f` background with amber/gold ambient blur, gold gradient crown crest, gradient gold "العرّاب" wordmark + English "AL-ARRAAB" subtitle, glass-morphism form (backdrop-blur white/5 with border white/10), gold gradient button, and a "لديك كود تفعيل؟" quick-link card.
+- **Removed public/demo content**: The old "نظام إدارة المحلات" header, the "كاشير + محاسبة + اشتراكات" subtitle, the feature-grid section, and the "حساب المشرف الرئيسي: admin@pos.com / Admin@1234" hint are all gone from the public login page.
+- **Activate page** also received the matching premium dark-gold Al-Arraab treatment.
+- **Desktop icon** regenerated as a gold rounded-square with a black crown and jeweled base at `desktop/build/icon.png` (512×512).
+
 ### Iteration 20 — Shop Activation Codes (like distributed .exe licenses) (Aug 22, 2026)
 - **Central architecture** clarified & documented: single cloud MongoDB (our stack, not Firebase) with `shop_id` isolating every shop's data; Super Admin creates shops which now receive an auto-generated activation code.
 - **Code format**: `MSK-XXXX-XXXX` (Crockford's base32 alphabet — no confusing O/0/I/1/L), collision-checked before insert.

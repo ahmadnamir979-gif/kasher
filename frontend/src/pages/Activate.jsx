@@ -5,7 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { KeyRound, ShieldCheck, Store, ArrowLeft } from "lucide-react";
+import { Crown, KeyRound, ShieldCheck, ArrowLeft } from "lucide-react";
 
 // Normalize typing: uppercase, keep only [A-Z0-9-]
 function normalize(v) {
@@ -46,25 +46,32 @@ export default function Activate() {
     };
 
     return (
-        <div dir="rtl" className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center p-4">
-            <div className="max-w-md w-full">
-                {/* Logo */}
+        <div dir="rtl" className="min-h-screen bg-[#0a0a0f] relative overflow-hidden flex items-center justify-center p-4">
+            <div className="absolute inset-0 pointer-events-none">
+                <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-amber-500/10 rounded-full blur-[120px]" />
+                <div className="absolute bottom-0 right-1/4 w-[600px] h-[600px] bg-yellow-600/10 rounded-full blur-[120px]" />
+            </div>
+            <div className="relative max-w-md w-full">
+                {/* Crest */}
                 <div className="text-center mb-8">
-                    <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl shadow-lg mb-4">
-                        <Store className="w-10 h-10 text-white" />
+                    <div className="inline-flex items-center justify-center relative">
+                        <div className="absolute inset-0 bg-gradient-to-br from-amber-400 to-amber-600 blur-2xl opacity-40" />
+                        <div className="relative w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-400 via-amber-500 to-amber-700 flex items-center justify-center shadow-2xl shadow-amber-500/30 ring-1 ring-amber-300/50">
+                            <Crown className="w-10 h-10 text-slate-900" strokeWidth={2.5} />
+                        </div>
                     </div>
-                    <h1 className="text-3xl font-black text-white mb-1">Misk POS</h1>
-                    <p className="text-sm text-slate-400">تفعيل نسخة المحل</p>
+                    <h1 className="mt-4 text-4xl font-black bg-gradient-to-b from-white via-amber-100 to-amber-300 bg-clip-text text-transparent">العرّاب</h1>
+                    <p className="text-sm text-amber-200/60 font-medium tracking-widest mt-1">تفعيل نسخة المحل</p>
                 </div>
 
                 {/* Card */}
-                <form onSubmit={submit} className="bg-white rounded-2xl shadow-2xl overflow-hidden">
-                    <div className="p-6 border-b border-zinc-100">
+                <form onSubmit={submit} className="rounded-3xl bg-gradient-to-b from-white/[0.08] to-white/[0.02] backdrop-blur-xl border border-white/10 shadow-2xl overflow-hidden">
+                    <div className="p-6 border-b border-white/10">
                         <div className="flex items-center gap-2 mb-1">
-                            <KeyRound className="w-5 h-5 text-emerald-600" />
-                            <h2 className="text-lg font-bold text-slate-900">أدخل كود التفعيل</h2>
+                            <KeyRound className="w-5 h-5 text-amber-300" />
+                            <h2 className="text-lg font-bold text-white">أدخل كود التفعيل</h2>
                         </div>
-                        <p className="text-xs text-slate-500 leading-relaxed">هذا الكود مرفق مع اشتراكك عند شرائك النظام من الإدارة. مثال: <span className="font-mono bg-slate-100 px-1.5 rounded text-slate-700">MSK-A9CD-K3F1</span></p>
+                        <p className="text-xs text-slate-400 leading-relaxed">هذا الكود مرفق مع اشتراكك عند شرائك النظام من الإدارة. مثال: <span className="font-mono bg-white/10 px-1.5 rounded text-amber-200">MSK-A9CD-K3F1</span></p>
                     </div>
 
                     <div className="p-6 space-y-4">
@@ -76,16 +83,16 @@ export default function Activate() {
                             spellCheck={false}
                             placeholder="MSK-XXXX-XXXX"
                             dir="ltr"
-                            className="text-center text-2xl font-mono tabular-nums font-bold tracking-widest h-16 bg-slate-50 border-2"
+                            className="text-center text-2xl font-mono tabular-nums font-bold tracking-widest h-16 bg-white/5 border-2 border-white/10 text-amber-100 placeholder:text-slate-600 focus:border-amber-400/50 focus:ring-amber-400/20"
                             maxLength={13}
                         />
                         <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
-                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400/70" />
                             كودك مؤمّن وينشّط جهازك فقط
                         </div>
                         <Button type="submit" disabled={busy || code.length < 12}
                             data-testid="activate-submit-btn"
-                            className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white text-base font-bold shadow-sm gap-2">
+                            className="w-full h-12 bg-gradient-to-b from-amber-400 to-amber-600 hover:from-amber-300 hover:to-amber-500 text-slate-900 text-base font-bold shadow-lg shadow-amber-500/20 gap-2 border-0">
                             {busy ? "جارٍ التفعيل…" : "تفعيل النظام"}
                             <ArrowLeft className="w-4 h-4" />
                         </Button>
@@ -93,10 +100,10 @@ export default function Activate() {
                 </form>
 
                 <div className="text-center mt-6 space-y-2">
-                    <a href="/login" className="text-xs text-slate-400 hover:text-white transition-colors" data-testid="go-to-login">
+                    <a href="/login" className="text-xs text-slate-400 hover:text-amber-200 transition-colors" data-testid="go-to-login">
                         تسجيل دخول بكلمة المرور بدلاً من كود التفعيل ←
                     </a>
-                    <p className="text-[11px] text-slate-500">لم تحصل على كود بعد؟ تواصل مع مالك النظام لإصدار اشتراك جديد.</p>
+                    <p className="text-[11px] text-slate-600">لم تحصل على كود بعد؟ تواصل مع مالك النظام لإصدار اشتراك جديد.</p>
                 </div>
             </div>
         </div>

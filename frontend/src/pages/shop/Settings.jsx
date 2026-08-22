@@ -136,7 +136,7 @@ export default function Settings() {
             <div className={`flex items-center gap-3 p-4 rounded-lg border ${isDesktop ? "bg-emerald-50 border-emerald-300" : "bg-sky-50 border-sky-300"}`}>
                 <Monitor className={`w-8 h-8 ${isDesktop ? "text-emerald-600" : "text-sky-600"}`} />
                 <div className="flex-1">
-                    <div className="font-bold text-slate-900">{isDesktop ? "برنامج سطح المكتب — Misk POS Desktop" : "وضع المتصفح"}</div>
+                    <div className="font-bold text-slate-900">{isDesktop ? "برنامج سطح المكتب — العرّاب Desktop" : "وضع المتصفح"}</div>
                     <p className="text-xs text-slate-600 mt-0.5">
                         {isDesktop
                             ? `مثبّت كبرنامج على الجهاز • ${desktopAPI?.platform} • Electron ${desktopAPI?.version} • طباعة صامتة مباشرة للطابعة ✓`
@@ -346,7 +346,7 @@ export default function Settings() {
                         <div className="flex items-center justify-between p-4 rounded-md border border-violet-200 bg-violet-50">
                             <div>
                                 <div className="font-semibold text-slate-900">تشغيل تلقائي عند بدء الحاسوب</div>
-                                <p className="text-xs text-slate-500 mt-1">افتح Misk POS تلقائياً عند تشغيل النظام لسرعة بدء العمل</p>
+                                <p className="text-xs text-slate-500 mt-1">افتح العرّاب تلقائياً عند تشغيل النظام لسرعة بدء العمل</p>
                             </div>
                             <button onClick={() => setAutoLaunch(v => !v)} data-testid="setting-auto-launch"
                                 className={`relative h-8 w-16 rounded-full transition-colors ${autoLaunch ? "bg-violet-500" : "bg-zinc-300"}`}>
@@ -374,7 +374,7 @@ export default function Settings() {
                 <section className="bg-gradient-to-l from-violet-50 to-white border border-violet-200 rounded-lg overflow-hidden">
                     <header className="flex items-center gap-3 px-5 h-14 border-b border-violet-200">
                         <Package className="w-5 h-5 text-violet-600" />
-                        <h2 className="font-semibold text-slate-900">حمّل نسخة البرنامج المثبّت (Misk POS Desktop)</h2>
+                        <h2 className="font-semibold text-slate-900">حمّل نسخة البرنامج المثبّت (العرّاب Desktop)</h2>
                     </header>
                     <div className="p-5 text-sm space-y-3 text-slate-800 leading-relaxed">
                         <p>نسخة سطح مكتب حقيقية مبنية بـ <b>Electron 32</b>، تُثبّت بضغطة واحدة وتتصل بالطابعة مباشرة كأي برنامج تقليدي.</p>
@@ -393,9 +393,9 @@ export default function Settings() {
                                 <li>من مستودع GitHub → <b className="text-white">Actions</b> → شغّل الـ workflow <span className="font-mono text-emerald-300">build-desktop</span>.</li>
                                 <li>عند الانتهاء (~7 دقائق) ستجد في تبويب <b className="text-white">Artifacts</b>:
                                     <ul className="list-disc pr-5 mt-1 text-slate-400">
-                                        <li><span className="font-mono text-white">Misk POS Setup 1.0.0.exe</span> (Windows) — installer + portable</li>
-                                        <li><span className="font-mono text-white">Misk POS-1.0.0.dmg</span> (macOS)</li>
-                                        <li><span className="font-mono text-white">Misk POS-1.0.0.AppImage</span> (Linux)</li>
+                                        <li><span className="font-mono text-white">Al-Arraab Setup 1.0.0.exe</span> (Windows) — installer + portable</li>
+                                        <li><span className="font-mono text-white">Al-Arraab-1.0.0.dmg</span> (macOS)</li>
+                                        <li><span className="font-mono text-white">Al-Arraab-1.0.0.AppImage</span> (Linux)</li>
                                     </ul>
                                 </li>
                                 <li>وزّع ملف التثبيت على أجهزة الكاشير — كل جهاز يفتحه ويسجّل دخول ببيانات المحل.</li>
