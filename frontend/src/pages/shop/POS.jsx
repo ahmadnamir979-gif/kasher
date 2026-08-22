@@ -540,7 +540,7 @@ export default function POS() {
                         </div>
                     </div>
                     {/* Bottom action buttons - matches reference */}
-                    <div className="grid grid-cols-9 gap-1.5 p-2 bg-white border-t border-zinc-200">
+                    <div className="grid grid-cols-8 gap-1.5 p-2 bg-white border-t border-zinc-200">
                         <ActBtn icon={Save} label="حفظ الفاتورة" color="sky" onClick={() => pay("cash")} testid="pay-cash-btn" />
                         <ActBtn icon={Printer} label="طباعة الفاتورة" color="cyan" onClick={() => lastSale && printReceipt("receipt-print-area")} testid="print-last-btn" />
                         <ActBtn icon={ReceiptText} label="طباعة آخر فاتورة" color="pink" onClick={() => lastSale ? setReceiptOpen(true) : toast.error("لا توجد فاتورة سابقة")} />
@@ -552,7 +552,6 @@ export default function POS() {
                         <ActBtn icon={FileText} label="عرض سعر" color="amber" onClick={() => toast.info("قريباً")} />
                         <ActBtn icon={PauseCircle} label="تعليق الفاتورة" color="pink" onClick={holdCart} testid="hold-invoice-btn" />
                         <ActBtn icon={Undo2} label="فاتورة مردودات" color="orange" onClick={openReturns} testid="open-returns-btn" />
-                        <ActBtn icon={MessageCircle} label="واتساب للزبون" color="emerald" onClick={openWA} testid="whatsapp-btn" />
                     </div>
                 </section>
 

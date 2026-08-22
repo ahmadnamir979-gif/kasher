@@ -17,6 +17,9 @@
 
 ## ما تمّ تنفيذه (Aug 22, 2026)
 
+### Iteration 15 — Remove duplicate WA button (Aug 22, 2026)
+- Removed the emerald "واتساب للزبون" button from the POS bottom action bar; WhatsApp send is now available only from the "تمّ حفظ الفاتورة" dialog to avoid confusion. Bottom grid rebalanced to 8 columns.
+
 ### Iteration 14 — Keep WA dialog open after send (Aug 22, 2026)
 - Removed the auto-close on "فتح واتساب" so cashier can fix a wrong number and reopen WhatsApp without retyping. Dialog only closes via إلغاء / X. Toast confirms the open action.
 
