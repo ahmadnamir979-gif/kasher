@@ -1,0 +1,72 @@
+{
+  "name": "misk-pos-desktop",
+  "version": "1.0.0",
+  "description": "Misk POS — Desktop app for supermarket cashier",
+  "main": "main.js",
+  "author": "Misk POS",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:linux": "electron-builder --linux --publish never",
+    "dist:all": "electron-builder -mwl --publish never"
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.5"
+  },
+  "build": {
+    "appId": "com.misk.pos",
+    "productName": "Misk POS",
+    "copyright": "Copyright © 2026 Misk POS",
+    "asar": true,
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json",
+      "build/**/*"
+    ],
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Misk POS",
+      "runAfterFinish": true,
+      "installerLanguages": ["ar", "en"]
+    },
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["universal"] }
+      ],
+      "category": "public.app-category.business",
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Office",
+      "icon": "build/icon.png"
+    },
+    "publish": null
+  }
+}

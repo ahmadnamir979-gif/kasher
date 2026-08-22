@@ -86,3 +86,7 @@ android-sdk/
 credentials.json
 *.key
 .credentials
+desktop/node_modules/electron/dist/electron
+desktop/dist/Misk
+POS-1.0.0-arm64.AppImage
+desktop/dist/linux-arm64-unpacked/misk-pos-desktop

@@ -17,6 +17,14 @@
 
 ## ما تمّ تنفيذه (Aug 22, 2026)
 
+### Iteration 18 — Real Electron Desktop App (Aug 22, 2026)
+- Built a fully working Electron 32 wrapper in `/app/desktop`: `main.js` opens the app, handles IPC for silent print (`webContents.print({ silent:true, deviceName })`), auto-launch, and `electron-updater` auto-updates from GitHub Releases.
+- `preload.js` exposes a safe `window.desktopAPI` (`isDesktop`, `listPrinters`, `getSettings`, `setSettings`, `silentPrint`).
+- Frontend `Settings` page now detects Electron and shows real OS printers with radio-card picker + refresh + "auto-launch" toggle; in web mode it shows the plain input + a download-installer banner.
+- POS silent-prints via `desktopAPI.silentPrint` when running inside Electron; falls back to hidden-iframe `window.print()` on web.
+- Added `.github/workflows/build-desktop.yml` matrix build for Windows (.exe installer + portable), macOS (.dmg), Linux (.AppImage + .deb) with GitHub Releases publishing on tag push.
+- Full step-by-step user guide in `desktop/BUILD_INSTRUCTIONS.md` and `desktop/README.md`.
+
 ### Iteration 17 — Settings Page + Printer Config (Aug 22, 2026)
 - New `/settings` page with a dedicated "إعدادات الطابعة" section: auto-print toggle, default printer name field, paper size (58mm / 80mm / A4), copies-per-invoice (1-5) with +/− stepper, and a "طباعة إيصال تجريبي الآن" test button that renders a live sample slip.
 - Preferences saved in `localStorage` (`pos_auto_print`, `pos_printer_name`, `pos_paper_size`, `pos_print_copies`); POS reads them on every sale and loops copies with staggered timing.

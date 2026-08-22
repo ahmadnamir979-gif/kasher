@@ -14,6 +14,7 @@ import {
     UserPlus, HandCoins, Delete, HelpCircle
 } from "lucide-react";
 import { ReceiptPreview, printReceipt } from "@/components/Receipt";
+import { silentPrintHTML, isDesktop } from "@/lib/desktop";
 import { ShiftBadge, ShiftManager } from "@/components/ShiftManager";
 import { OfflineBadge } from "@/components/OfflineBadge";
 
@@ -278,7 +279,20 @@ export default function POS() {
             refresh();
             if (autoPrint()) {
                 const n = printCopies();
-                for (let i = 0; i < n; i++) setTimeout(() => printReceipt("receipt-print-area"), 250 + i * 400);
+                if (isDesktop) {
+                    // Silent print via Electron IPC — no dialog, uses configured printer
+                    setTimeout(() => {
+                        const el = document.getElementById("receipt-print-area");
+                        if (el) silentPrintHTML({
+                            html: el.outerHTML,
+                            deviceName: localStorage.getItem("pos_printer_name") || "",
+                            copies: n,
+                            paperSize: localStorage.getItem("pos_paper_size") || "80mm",
+                        });
+                    }, 250);
+                } else {
+                    for (let i = 0; i < n; i++) setTimeout(() => printReceipt("receipt-print-area"), 250 + i * 400);
+                }
             }
         } catch (e) {
             if (isNetworkError(e)) {
