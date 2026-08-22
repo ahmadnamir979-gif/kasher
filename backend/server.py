@@ -341,6 +341,14 @@ async def list_shops(_=Depends(require_super_admin)):
         s["invoices_count"] = sales_agg[0]["count"] if sales_agg else 0
     return shops
 
+# ---------- Activation codes ----------
+import secrets as _secrets
+
+def _gen_activation_code() -> str:
+    """Generate a shop activation code like MSK-A9CD-K3F1 (Crockford's base32 for readability)."""
+    alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no O/0/I/1/L
+    return "MSK-" + "".join(_secrets.choice(alphabet) for _ in range(4)) + "-" + "".join(_secrets.choice(alphabet) for _ in range(4))
+
 @api.post("/admin/shops")
 async def create_shop(data: ShopCreate, _=Depends(require_super_admin)):
     email = data.owner_email.strip().lower()
@@ -348,14 +356,19 @@ async def create_shop(data: ShopCreate, _=Depends(require_super_admin)):
         raise HTTPException(400, "البريد الإلكتروني مستخدم من قبل")
     shop_id = new_id()
     exp = now_utc() + timedelta(days=30*data.subscription_months)
+    # Generate a unique activation code
+    for _try in range(5):
+        code = _gen_activation_code()
+        if not await db.shops.find_one({"activation_code": code}):
+            break
     shop_doc = {
         "id": shop_id, "name": data.name, "phone": data.phone or "",
         "address": data.address or "", "is_active": True,
         "subscription_expires_at": iso(exp),
+        "activation_code": code,
         "created_at": iso(now_utc()),
     }
     await db.shops.insert_one(shop_doc)
-    # Create default warehouse
     await db.warehouses.insert_one({
         "id": new_id(), "shop_id": shop_id, "name": "المخزن الرئيسي",
         "location": "", "is_default": True, "created_at": iso(now_utc()),
@@ -367,12 +380,56 @@ async def create_shop(data: ShopCreate, _=Depends(require_super_admin)):
         "created_at": iso(now_utc()),
     }
     await db.users.insert_one(owner_doc)
-    # Record initial subscription payment
     await db.subscription_payments.insert_one({
         "id": new_id(), "shop_id": shop_id, "months": data.subscription_months,
         "amount": 0, "created_at": iso(now_utc()),
     })
-    return {"ok": True, "shop_id": shop_id}
+    return {"ok": True, "shop_id": shop_id, "activation_code": code}
+
+@api.post("/admin/shops/{shop_id}/regenerate-code")
+async def regenerate_activation_code(shop_id: str, _=Depends(require_super_admin)):
+    if not await db.shops.find_one({"id": shop_id}):
+        raise HTTPException(404, "Shop not found")
+    for _try in range(5):
+        code = _gen_activation_code()
+        if not await db.shops.find_one({"activation_code": code}):
+            break
+    await db.shops.update_one({"id": shop_id}, {"$set": {"activation_code": code}})
+    return {"ok": True, "activation_code": code}
+
+class ActivateIn(BaseModel):
+    code: str
+    device_name: Optional[str] = ""
+
+@api.post("/activate")
+async def activate_shop(data: ActivateIn, response: Response):
+    """Public endpoint — desktop app or web activation page exchanges a code for a JWT session."""
+    code = (data.code or "").strip().upper().replace(" ", "")
+    if not code.startswith("MSK-"): raise HTTPException(400, "الكود غير صحيح")
+    shop = await db.shops.find_one({"activation_code": code}, {"_id": 0})
+    if not shop: raise HTTPException(404, "الكود غير صحيح أو منتهي الصلاحية")
+    if not shop.get("is_active"): raise HTTPException(403, "هذا المحل موقوف — تواصل مع الإدارة")
+    # Verify subscription still valid
+    exp = shop.get("subscription_expires_at")
+    if exp and datetime.fromisoformat(exp) < now_utc():
+        raise HTTPException(403, "انتهى اشتراك المحل — يرجى التجديد")
+    # Find the shop owner user
+    owner = await db.users.find_one(
+        {"shop_id": shop["id"], "role": "shop_owner"}, {"_id": 0}
+    )
+    if not owner: raise HTTPException(500, "لم يتم العثور على مالك المحل")
+    # Issue JWT token
+    token = create_access_token(owner["id"], owner["role"], owner["shop_id"])
+    response.set_cookie("token", token, httponly=True, samesite="none", secure=True, max_age=7*86400)
+    return {
+        "ok": True,
+        "token": token,
+        "user": {
+            "id": owner["id"], "email": owner["email"], "name": owner["name"],
+            "role": owner["role"], "shop_id": owner["shop_id"],
+        },
+        "shop": {"id": shop["id"], "name": shop["name"]},
+    }
 
 @api.patch("/admin/shops/{shop_id}")
 async def update_shop(shop_id: str, data: ShopUpdate, _=Depends(require_super_admin)):

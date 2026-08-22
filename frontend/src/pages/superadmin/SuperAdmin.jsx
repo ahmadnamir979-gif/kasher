@@ -2,7 +2,7 @@ import { Routes, Route, useLocation, Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import AppShell, { SideLink } from "@/components/layout/AppShell";
 import { api, formatApiError, fmt, fmtInt } from "@/lib/api";
-import { LayoutDashboard, Store, CreditCard, Users, BarChart3, Plus, Power, CalendarPlus, Trash2 } from "lucide-react";
+import { LayoutDashboard, Store, CreditCard, Users, BarChart3, Plus, Power, CalendarPlus, Trash2, KeyRound, Copy, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,6 +10,32 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+
+
+function ActivationCodeCell({ shop, onRegen }) {
+    const code = shop.activation_code || "—";
+    const copy = async () => {
+        try {
+            await navigator.clipboard.writeText(code);
+            toast.success("تمّ نسخ كود التفعيل");
+        } catch { toast.error("تعذّر النسخ"); }
+    };
+    const regen = async () => {
+        if (!window.confirm(`إعادة توليد كود جديد للمحل "${shop.name}"؟ الكود القديم سيتوقف عن العمل فوراً.`)) return;
+        try {
+            await api.post(`/admin/shops/${shop.id}/regenerate-code`);
+            toast.success("تمّ توليد كود جديد");
+            onRegen?.();
+        } catch (e) { toast.error(formatApiError(e)); }
+    };
+    return (
+        <div className="flex items-center gap-1.5" data-testid={`code-cell-${shop.id}`}>
+            <span className="font-mono tabular-nums text-[13px] font-bold bg-slate-900 text-emerald-300 px-2 py-1 rounded select-all" data-testid={`code-value-${shop.id}`}>{code}</span>
+            <button onClick={copy} className="text-slate-500 hover:text-slate-900 hover:bg-zinc-100 p-1 rounded" title="نسخ" data-testid={`copy-code-${shop.id}`}><Copy className="w-3.5 h-3.5" /></button>
+            <button onClick={regen} className="text-amber-600 hover:text-amber-800 hover:bg-amber-50 p-1 rounded" title="توليد جديد" data-testid={`regen-code-${shop.id}`}><RefreshCw className="w-3.5 h-3.5" /></button>
+        </div>
+    );
+}
 
 function Sidebar() {
     const { pathname } = useLocation();
@@ -22,8 +48,7 @@ function Sidebar() {
 }
 
 function StatCard({ label, value, hint, color = "slate" }) {
-    const bg = { slate: "bg-slate-900", blue: "bg-blue-600", emerald: "bg-emerald-600", amber: "bg-amber-500", rose: "bg-rose-600" }[color];
-    return (
+    const bg = { slate: "bg-slate-900", blue: "bg-blue-600", emerald: "bg-emerald-600", amber: "bg-amber-500", rose: "bg-rose-600" }[color];    return (
         <Card className="p-5 border-zinc-200">
             <div className="flex items-start justify-between mb-3">
                 <div className="text-xs font-medium text-slate-500 uppercase tracking-wide">{label}</div>
@@ -120,13 +145,16 @@ function Shops() {
             <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                     <thead className="bg-zinc-50 border-b border-zinc-200 text-right text-xs font-medium text-slate-600">
-                        <tr><th className="p-3">المحل</th><th className="p-3">المالك / الدخول</th><th className="p-3">الاشتراك</th><th className="p-3">المبيعات</th><th className="p-3">الحالة</th><th className="p-3">إجراءات</th></tr>
+                        <tr><th className="p-3">المحل</th><th className="p-3">المالك / الدخول</th><th className="p-3">كود التفعيل</th><th className="p-3">الاشتراك</th><th className="p-3">المبيعات</th><th className="p-3">الحالة</th><th className="p-3">إجراءات</th></tr>
                     </thead>
                     <tbody>
                         {shops.map(s => (
                             <tr key={s.id} className="border-b border-zinc-100" data-testid={`shop-row-${s.id}`}>
                                 <td className="p-3"><div className="font-medium text-slate-900">{s.name}</div><div className="text-xs text-slate-500">{s.phone}</div></td>
                                 <td className="p-3"><div className="text-slate-800">{s.owner?.name}</div><div className="text-xs text-slate-500 tabular-nums">{s.owner?.email}</div></td>
+                                <td className="p-3">
+                                    <ActivationCodeCell shop={s} onRegen={load} />
+                                </td>
                                 <td className="p-3 tabular-nums">{s.subscription_expires_at?.substring(0,10)}</td>
                                 <td className="p-3 tabular-nums font-semibold">{fmt(s.sales_total)} <span className="text-xs text-slate-400">({fmtInt(s.invoices_count)} فاتورة)</span></td>
                                 <td className="p-3">{s.is_active ? <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">نشط</Badge> : <Badge className="bg-rose-100 text-rose-800 hover:bg-rose-100">موقوف</Badge>}</td>
@@ -139,7 +167,7 @@ function Shops() {
                                 </td>
                             </tr>
                         ))}
-                        {shops.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-slate-400">اضغط "إضافة محل" للبدء</td></tr>}
+                        {shops.length === 0 && <tr><td colSpan={7} className="p-8 text-center text-slate-400">اضغط "إضافة محل" للبدء</td></tr>}
                     </tbody>
                 </table>
             </div>

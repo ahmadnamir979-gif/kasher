@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, BrowserRouter, useNavigate, useLocation, Link 
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { Toaster } from "sonner";
 import Login from "@/pages/Login";
+import Activate from "@/pages/Activate";
 import SuperAdmin from "@/pages/superadmin/SuperAdmin";
 import ShopApp from "@/pages/shop/ShopApp";
 import "@/App.css";
@@ -32,6 +33,7 @@ export default function App() {
                 <Routes>
                     <Route path="/" element={<Root />} />
                     <Route path="/login" element={<Login />} />
+                    <Route path="/activate" element={<Activate />} />
                     <Route path="/admin/*" element={<Protected role="super_admin"><SuperAdmin /></Protected>} />
                     <Route path="/*" element={<Protected role="shop"><ShopApp /></Protected>} />
                 </Routes>

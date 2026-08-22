@@ -17,6 +17,18 @@
 
 ## ما تمّ تنفيذه (Aug 22, 2026)
 
+### Iteration 20 — Shop Activation Codes (like distributed .exe licenses) (Aug 22, 2026)
+- **Central architecture** clarified & documented: single cloud MongoDB (our stack, not Firebase) with `shop_id` isolating every shop's data; Super Admin creates shops which now receive an auto-generated activation code.
+- **Code format**: `MSK-XXXX-XXXX` (Crockford's base32 alphabet — no confusing O/0/I/1/L), collision-checked before insert.
+- **Backend additions**:
+  - `POST /api/admin/shops` now returns `{ shop_id, activation_code }` alongside the existing user creation.
+  - `POST /api/admin/shops/{shop_id}/regenerate-code` — instantly rotates the code (old one stops working).
+  - `POST /api/activate` — public endpoint (no auth) that trades a code for a JWT + user context. Rejects if code invalid, shop deactivated, or subscription expired.
+  - Backfilled every existing shop with its own activation code (script run once).
+- **Super Admin UI**: New "كود التفعيل" column shows the code in a monospace emerald pill, with a **Copy** button and a **Regenerate** button (with confirm dialog).
+- **New public page `/activate`**: Dark-themed splash with a big 3-block auto-formatted input (`MSK-XXXX-XXXX`), auto-uppercases, strips invalid chars, and shows shield/lock icons. On success stores token, sets `cached_user`, and navigates to `/pos`. Verified: activation succeeds → wrong code returns 404 → regenerating code invalidates the old one.
+- Ready to be wired into the Electron desktop app: `desktop/main.js` can open `/activate` as the initial URL so each `.exe` copy asks for its code once and locks itself to the shop.
+
 ### Iteration 19 — Per-Shop Backup & Restore (Aug 22, 2026)
 - Added 3 backend endpoints in `server.py`: `GET /api/backup/summary` (per-shop counts), `GET /api/backup/export` (streams a ZIP with 14 collection JSON files + `manifest.json` + `shop.json` + `totals.json` scoped to `shop_id`), `POST /api/backup/restore?mode=merge|replace` (accepts ZIP upload; `merge` upserts by `id`, `replace` wipes shop data then inserts).
 - Security: on restore, `shop_id` is **forced** to the current user's shop for every doc — cross-tenant contamination is impossible even if a malicious backup file is uploaded.
