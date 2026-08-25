@@ -241,6 +241,22 @@ class ProduceIn(BaseModel):
     notes: Optional[str] = ""
 
 
+class FixedAssetIn(BaseModel):
+    name: str
+    category: Literal["equipment", "vehicle", "building", "furniture", "other"] = "equipment"
+    purchase_date: str  # YYYY-MM-DD
+    purchase_cost: float
+    useful_life_years: float
+    salvage_value: float = 0.0
+    depreciation_method: Literal["straight_line"] = "straight_line"
+    payment_account_id: Optional[str] = None  # cash or bank account
+    notes: Optional[str] = ""
+
+
+class DepreciateIn(BaseModel):
+    as_of: str  # YYYY-MM-DD — accumulate depreciation up to this date
+
+
 # ---------- Helpers ----------
 async def check_period_locked(db, shop_id: str, date_str: str):
     """Raise 403 if date is in a closed period."""
@@ -306,9 +322,70 @@ async def post_journal(db, shop_id: str, user_id: str, entry: dict):
     return doc
 
 
-# =========================================================================
-# ROUTES REGISTRATION
-# =========================================================================
+async def ensure_fixed_asset_accounts(db, shop_id: str):
+    """Ensure the shop has accounts for gross fixed assets, accumulated depreciation, and expense."""
+    await ensure_default_coa(db, shop_id)
+    existing = await db.accounts.find_one({"shop_id": shop_id, "is_accumulated_dep": True})
+    if existing:
+        return
+    # 1202 Accumulated Depreciation (contra-asset, credit balance)
+    parent12 = await db.accounts.find_one({"shop_id": shop_id, "code": "12"})
+    await db.accounts.insert_one({
+        "id": _new_id(),
+        "shop_id": shop_id,
+        "code": "1202",
+        "name": "مجمع الإهلاك",
+        "type": "asset",
+        "parent_id": parent12["id"] if parent12 else None,
+        "is_group": False,
+        "is_system": True,
+        "is_accumulated_dep": True,
+        "balance": 0.0,
+        "created_at": _now_iso(),
+    })
+    # 5301 Depreciation Expense
+    parent5 = await db.accounts.find_one({"shop_id": shop_id, "code": "5"})
+    await db.accounts.insert_one({
+        "id": _new_id(),
+        "shop_id": shop_id,
+        "code": "5301",
+        "name": "مصروف الإهلاك",
+        "type": "expense",
+        "parent_id": parent5["id"] if parent5 else None,
+        "is_group": False,
+        "is_system": True,
+        "is_depreciation_expense": True,
+        "balance": 0.0,
+        "created_at": _now_iso(),
+    })
+
+
+def _months_between(d1_str: str, d2_str: str) -> float:
+    d1 = datetime.strptime(d1_str, "%Y-%m-%d")
+    d2 = datetime.strptime(d2_str, "%Y-%m-%d")
+    delta = (d2.year - d1.year) * 12 + (d2.month - d1.month)
+    return max(0.0, delta + max(0.0, (d2.day - d1.day) / 30.0))
+
+
+def _compute_depreciation(asset: dict, as_of: str) -> dict:
+    months_elapsed = _months_between(asset["purchase_date"], as_of)
+    total_months = asset["useful_life_years"] * 12
+    if total_months <= 0:
+        return {"months_elapsed": 0, "total_depreciable": 0, "monthly": 0, "accumulated": 0, "net_book_value": asset["purchase_cost"]}
+    depreciable_base = asset["purchase_cost"] - asset["salvage_value"]
+    monthly = depreciable_base / total_months
+    accumulated = min(monthly * months_elapsed, depreciable_base)
+    net = asset["purchase_cost"] - accumulated
+    return {
+        "months_elapsed": round(months_elapsed, 2),
+        "total_months": total_months,
+        "monthly": round(monthly, 2),
+        "accumulated": round(accumulated, 2),
+        "net_book_value": round(net, 2),
+    }
+
+
+
 def register(api, db, require_shop_user):
     """Register all accounting routes on the given api router."""
 
@@ -1603,5 +1680,160 @@ def register(api, db, require_shop_user):
             ws.column_dimensions[col_letter].width = w
 
         return _xlsx_response(wb, f"Balance-Sheet-{as_of or _now_iso()[:10]}.xlsx")
+
+    # ---------- Fixed Assets ----------
+    @api.get("/fixed-assets")
+    async def list_fixed_assets(user=Depends(require_shop_user), as_of: Optional[str] = None):
+        await ensure_fixed_asset_accounts(db, _sid(user))
+        as_of = as_of or _now_iso()[:10]
+        rows = await db.fixed_assets.find({"shop_id": _sid(user)}, {"_id": 0}).sort("purchase_date", -1).to_list(1000)
+        for r in rows:
+            r["depreciation"] = _compute_depreciation(r, as_of)
+        return rows
+
+    @api.get("/fixed-assets/summary")
+    async def fixed_assets_summary(user=Depends(require_shop_user), as_of: Optional[str] = None):
+        as_of = as_of or _now_iso()[:10]
+        rows = await db.fixed_assets.find({"shop_id": _sid(user), "disposed_at": None}, {"_id": 0}).to_list(1000)
+        gross = sum(r["purchase_cost"] for r in rows)
+        accumulated = sum(_compute_depreciation(r, as_of)["accumulated"] for r in rows)
+        return {
+            "as_of": as_of,
+            "count": len(rows),
+            "gross_cost": round(gross, 2),
+            "accumulated_depreciation": round(accumulated, 2),
+            "net_book_value": round(gross - accumulated, 2),
+        }
+
+    @api.post("/fixed-assets")
+    async def create_fixed_asset(data: FixedAssetIn, user=Depends(require_shop_user)):
+        await ensure_fixed_asset_accounts(db, _sid(user))
+        # Create individual asset account under 1201
+        parent = await db.accounts.find_one({"shop_id": _sid(user), "code": "1201"})
+        # Next code
+        last = await db.accounts.find({"shop_id": _sid(user), "code": {"$regex": "^1201"}}).sort("code", -1).limit(1).to_list(1)
+        try:
+            next_code = str(int(last[0]["code"]) + 1) if last and last[0]["code"] != "1201" else "120101"
+        except Exception:
+            next_code = f"1201{len(last) + 1:02d}"
+        asset_acc_id = _new_id()
+        await db.accounts.insert_one({
+            "id": asset_acc_id,
+            "shop_id": _sid(user),
+            "code": next_code,
+            "name": f"أصل ثابت - {data.name}",
+            "type": "asset",
+            "parent_id": parent["id"] if parent else None,
+            "is_group": False,
+            "is_system": True,
+            "is_fixed_asset_item": True,
+            "balance": 0.0,
+            "created_at": _now_iso(),
+        })
+        asset_id = _new_id()
+        doc = {
+            "id": asset_id,
+            "shop_id": _sid(user),
+            **data.model_dump(),
+            "asset_account_id": asset_acc_id,
+            "accumulated_dep_posted": 0.0,
+            "last_dep_date": None,
+            "disposed_at": None,
+            "created_at": _now_iso(),
+        }
+        await db.fixed_assets.insert_one(doc)
+        # Post purchase JE
+        pay_acc = None
+        if data.payment_account_id:
+            pay_acc = await db.accounts.find_one({"id": data.payment_account_id, "shop_id": _sid(user)})
+        if not pay_acc:
+            pay_acc = await get_system_account(db, _sid(user), "is_cash")
+        if pay_acc:
+            await post_journal(db, _sid(user), user["id"], {
+                "date": data.purchase_date,
+                "description": f"شراء أصل ثابت - {data.name}",
+                "lines": [
+                    {"account_id": asset_acc_id, "account_name": f"أصل ثابت - {data.name}", "debit": data.purchase_cost, "credit": 0},
+                    {"account_id": pay_acc["id"], "account_name": pay_acc["name"], "debit": 0, "credit": data.purchase_cost},
+                ],
+                "reference": f"FA-BUY-{asset_id[:8]}",
+                "source": "fixed_asset_purchase",
+                "source_id": asset_id,
+            })
+        doc.pop("_id", None)
+        return doc
+
+    @api.post("/fixed-assets/{aid}/depreciate")
+    async def depreciate_asset(aid: str, data: DepreciateIn, user=Depends(require_shop_user)):
+        asset = await db.fixed_assets.find_one({"id": aid, "shop_id": _sid(user)})
+        if not asset:
+            raise HTTPException(404, "الأصل غير موجود")
+        if asset.get("disposed_at"):
+            raise HTTPException(400, "الأصل مُخرَج، لا يمكن إهلاكه")
+        computed = _compute_depreciation(asset, data.as_of)
+        already_posted = asset.get("accumulated_dep_posted", 0)
+        to_post = round(computed["accumulated"] - already_posted, 2)
+        if to_post <= 0:
+            return {"ok": True, "already_up_to_date": True, "computed": computed}
+        exp_acc = await get_system_account(db, _sid(user), "is_depreciation_expense")
+        acc_dep_acc = await get_system_account(db, _sid(user), "is_accumulated_dep")
+        if not exp_acc or not acc_dep_acc:
+            raise HTTPException(500, "حسابات الإهلاك غير معدّة")
+        await post_journal(db, _sid(user), user["id"], {
+            "date": data.as_of,
+            "description": f"إهلاك شهري - {asset['name']}",
+            "lines": [
+                {"account_id": exp_acc["id"], "account_name": exp_acc["name"], "debit": to_post, "credit": 0},
+                {"account_id": acc_dep_acc["id"], "account_name": acc_dep_acc["name"], "debit": 0, "credit": to_post},
+            ],
+            "reference": f"DEP-{aid[:8]}",
+            "source": "depreciation",
+            "source_id": aid,
+        })
+        await db.fixed_assets.update_one(
+            {"id": aid},
+            {"$set": {"accumulated_dep_posted": computed["accumulated"], "last_dep_date": data.as_of}},
+        )
+        return {"ok": True, "posted": to_post, "computed": computed}
+
+    @api.post("/fixed-assets/depreciate-all")
+    async def depreciate_all(data: DepreciateIn, user=Depends(require_shop_user)):
+        assets = await db.fixed_assets.find({"shop_id": _sid(user), "disposed_at": None}).to_list(1000)
+        exp_acc = await get_system_account(db, _sid(user), "is_depreciation_expense")
+        acc_dep_acc = await get_system_account(db, _sid(user), "is_accumulated_dep")
+        posted = 0.0
+        count = 0
+        for asset in assets:
+            computed = _compute_depreciation(asset, data.as_of)
+            already = asset.get("accumulated_dep_posted", 0)
+            to_post = round(computed["accumulated"] - already, 2)
+            if to_post <= 0:
+                continue
+            await post_journal(db, _sid(user), user["id"], {
+                "date": data.as_of,
+                "description": f"إهلاك شهري - {asset['name']}",
+                "lines": [
+                    {"account_id": exp_acc["id"], "account_name": exp_acc["name"], "debit": to_post, "credit": 0},
+                    {"account_id": acc_dep_acc["id"], "account_name": acc_dep_acc["name"], "debit": 0, "credit": to_post},
+                ],
+                "reference": f"DEP-{asset['id'][:8]}",
+                "source": "depreciation",
+                "source_id": asset["id"],
+            })
+            await db.fixed_assets.update_one(
+                {"id": asset["id"]},
+                {"$set": {"accumulated_dep_posted": computed["accumulated"], "last_dep_date": data.as_of}},
+            )
+            posted += to_post
+            count += 1
+        return {"ok": True, "posted_total": round(posted, 2), "assets_updated": count}
+
+    @api.delete("/fixed-assets/{aid}")
+    async def dispose_asset(aid: str, user=Depends(require_shop_user)):
+        asset = await db.fixed_assets.find_one({"id": aid, "shop_id": _sid(user)})
+        if not asset:
+            raise HTTPException(404, "الأصل غير موجود")
+        await db.fixed_assets.update_one({"id": aid}, {"$set": {"disposed_at": _now_iso()}})
+        return {"ok": True}
 
     return api

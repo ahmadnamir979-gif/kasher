@@ -552,6 +552,19 @@ async def create_product(data: ProductIn, user=Depends(require_shop_user)):
     if not payload.get("warehouse_id"):
         payload["warehouse_id"] = await _ensure_default_warehouse(sid(user))
     if not payload.get("barcode"):
+        # Try shop numbering rule first
+        try:
+            rule = await db.numbering_rules.find_one({"shop_id": sid(user)}, {"_id": 0})
+            if rule and rule.get("enabled"):
+                code = f"{rule.get('prefix', '')}{str(rule['next_number']).zfill(rule.get('pad_width', 5))}"
+                # Check uniqueness
+                exists = await db.products.find_one({"shop_id": sid(user), "barcode": code})
+                if not exists:
+                    payload["barcode"] = code
+                    await db.numbering_rules.update_one({"shop_id": sid(user)}, {"$inc": {"next_number": 1}})
+        except Exception:
+            pass
+    if not payload.get("barcode"):
         # Ensure uniqueness within shop
         for _ in range(5):
             b = _gen_barcode()
@@ -2147,6 +2160,14 @@ try:
     logger.info("Accounting module registered.")
 except Exception as _e:
     logger.exception("Failed to register accounting module: %s", _e)
+
+# Register inventory extras (numbering, bulk price, adjustments, alternatives)
+try:
+    from inventory_extras import register as _register_inv
+    _register_inv(api, db, require_shop_user)
+    logger.info("Inventory extras module registered.")
+except Exception as _e:
+    logger.exception("Failed to register inventory extras: %s", _e)
 
 app.include_router(api)
 

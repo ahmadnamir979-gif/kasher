@@ -1,6 +1,6 @@
 import { Routes, Route, useLocation, Navigate } from "react-router-dom";
 import AppShell, { SideLink } from "@/components/layout/AppShell";
-import { LayoutDashboard, ScanBarcode, Package, ShoppingCart, Truck, Users, UserCog, Receipt, BarChart3, Wallet, Clock, Warehouse, Tag, ArrowLeftRight, Wand2, BellRing, Settings as SettingsIcon, Book, FileText, Landmark, Percent, Lock, Target, DollarSign, ClipboardList, Calendar, Factory, AlertTriangle } from "lucide-react";
+import { LayoutDashboard, ScanBarcode, Package, ShoppingCart, Truck, Users, UserCog, Receipt, BarChart3, Wallet, Clock, Warehouse, Tag, ArrowLeftRight, Wand2, BellRing, Settings as SettingsIcon, Book, FileText, Landmark, Percent, Lock, Target, DollarSign, ClipboardList, Calendar, Factory, AlertTriangle, Building2, Hash, Calculator, ClipboardCheck, Repeat } from "lucide-react";
 import POS from "@/pages/shop/POS";
 import Products from "@/pages/shop/Products";
 import Sales from "@/pages/shop/Sales";
@@ -34,12 +34,21 @@ import PricingTiers from "@/pages/shop/accounting/PricingTiers";
 import Manufacturing from "@/pages/shop/accounting/Manufacturing";
 import ExpiryAlerts from "@/pages/shop/accounting/ExpiryAlerts";
 import Ledger from "@/pages/shop/accounting/Ledger";
+import FixedAssets from "@/pages/shop/accounting/FixedAssets";
+import NumberingRule from "@/pages/shop/inventory/NumberingRule";
+import BulkPrice from "@/pages/shop/inventory/BulkPrice";
+import InventoryAdjustments from "@/pages/shop/inventory/InventoryAdjustments";
+import Alternatives from "@/pages/shop/inventory/Alternatives";
 
 const nav = [
     { section: "التشغيل" },
     { to: "/pos", icon: ScanBarcode, label: "نقطة البيع" },
     { to: "/dashboard", icon: LayoutDashboard, label: "لوحة التحكم" },
     { to: "/products", icon: Package, label: "المنتجات والمخزون" },
+    { to: "/product-numbering", icon: Hash, label: "ترقيم الأصناف" },
+    { to: "/bulk-price", icon: Calculator, label: "معالجة الأسعار" },
+    { to: "/alternatives", icon: Repeat, label: "بدائل الأصناف" },
+    { to: "/inventory-adjustments", icon: ClipboardCheck, label: "ضبط المخازن" },
     { to: "/warehouses", icon: Warehouse, label: "المخازن" },
     { to: "/transfers", icon: ArrowLeftRight, label: "تحويلات المخزون" },
     { to: "/barcodes", icon: Tag, label: "ملصقات الباركود" },
@@ -59,6 +68,7 @@ const nav = [
     { to: "/ledger", icon: Book, label: "دفتر الأستاذ" },
     { to: "/vouchers", icon: Receipt, label: "السندات (قبض/صرف)" },
     { to: "/banks", icon: Landmark, label: "البنوك والشيكات" },
+    { to: "/fixed-assets", icon: Building2, label: "الأصول الثابتة" },
     { to: "/cost-centers", icon: Target, label: "مراكز التكلفة" },
     { to: "/currencies", icon: DollarSign, label: "العملات" },
     { to: "/vat", icon: Percent, label: "كشف الضريبة" },
@@ -93,6 +103,10 @@ export default function ShopApp() {
                 <Route path="dashboard" element={<Dashboard />} />
                 <Route path="migration" element={<Migration />} />
                 <Route path="products" element={<Products />} />
+                <Route path="product-numbering" element={<NumberingRule />} />
+                <Route path="bulk-price" element={<BulkPrice />} />
+                <Route path="alternatives" element={<Alternatives />} />
+                <Route path="inventory-adjustments" element={<InventoryAdjustments />} />
                 <Route path="warehouses" element={<Warehouses />} />
                 <Route path="transfers" element={<Transfers />} />
                 <Route path="barcodes" element={<BarcodeLabels />} />
@@ -111,6 +125,7 @@ export default function ShopApp() {
                 <Route path="ledger" element={<Ledger />} />
                 <Route path="vouchers" element={<Vouchers />} />
                 <Route path="banks" element={<BanksChecks />} />
+                <Route path="fixed-assets" element={<FixedAssets />} />
                 <Route path="cost-centers" element={<CostCenters />} />
                 <Route path="currencies" element={<Currencies />} />
                 <Route path="vat" element={<VatReport />} />
