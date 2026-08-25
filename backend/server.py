@@ -2177,6 +2177,14 @@ try:
 except Exception as _e:
     logger.exception("Failed to register live-data module: %s", _e)
 
+# Register AI Assistant + BI Dashboard + Excel Templates
+try:
+    from ai_bi_module import register as _register_ai
+    _register_ai(api, db, require_shop_user)
+    logger.info("AI/BI module registered.")
+except Exception as _e:
+    logger.exception("Failed to register AI/BI module: %s", _e)
+
 app.include_router(api)
 
 app.add_middleware(

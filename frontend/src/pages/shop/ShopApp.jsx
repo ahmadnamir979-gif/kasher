@@ -1,6 +1,6 @@
 import { Routes, Route, useLocation, Navigate } from "react-router-dom";
 import AppShell, { SideLink } from "@/components/layout/AppShell";
-import { LayoutDashboard, ScanBarcode, Package, ShoppingCart, Truck, Users, UserCog, Receipt, BarChart3, Wallet, Clock, Warehouse, Tag, ArrowLeftRight, Wand2, BellRing, Settings as SettingsIcon, Book, FileText, Landmark, Percent, Lock, Target, DollarSign, ClipboardList, Calendar, Factory, AlertTriangle, Building2, Hash, Calculator, ClipboardCheck, Repeat, FileSpreadsheet } from "lucide-react";
+import { LayoutDashboard, ScanBarcode, Package, ShoppingCart, Truck, Users, UserCog, Receipt, BarChart3, Wallet, Clock, Warehouse, Tag, ArrowLeftRight, Wand2, BellRing, Settings as SettingsIcon, Book, FileText, Landmark, Percent, Lock, Target, DollarSign, ClipboardList, Calendar, Factory, AlertTriangle, Building2, Hash, Calculator, ClipboardCheck, Repeat, FileSpreadsheet, Sparkles } from "lucide-react";
 import POS from "@/pages/shop/POS";
 import Products from "@/pages/shop/Products";
 import Sales from "@/pages/shop/Sales";
@@ -40,11 +40,13 @@ import BulkPrice from "@/pages/shop/inventory/BulkPrice";
 import InventoryAdjustments from "@/pages/shop/inventory/InventoryAdjustments";
 import Alternatives from "@/pages/shop/inventory/Alternatives";
 import ExcelLive from "@/pages/shop/inventory/ExcelLive";
+import AIAssistant from "@/pages/shop/AIAssistant";
 
 const nav = [
     { section: "التشغيل" },
     { to: "/pos", icon: ScanBarcode, label: "نقطة البيع" },
     { to: "/dashboard", icon: LayoutDashboard, label: "لوحة التحكم" },
+    { to: "/assistant", icon: Sparkles, label: "المساعد الذكي" },
     { to: "/products", icon: Package, label: "المنتجات والمخزون" },
     { to: "/product-numbering", icon: Hash, label: "ترقيم الأصناف" },
     { to: "/bulk-price", icon: Calculator, label: "معالجة الأسعار" },
@@ -103,6 +105,7 @@ export default function ShopApp() {
         <AppShell title={item?.label || ""} sidebar={<Sidebar />}>
             <Routes>
                 <Route path="dashboard" element={<Dashboard />} />
+                <Route path="assistant" element={<AIAssistant />} />
                 <Route path="migration" element={<Migration />} />
                 <Route path="products" element={<Products />} />
                 <Route path="product-numbering" element={<NumberingRule />} />

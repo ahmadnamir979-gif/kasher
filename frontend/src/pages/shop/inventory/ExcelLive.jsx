@@ -114,6 +114,14 @@ export default function ExcelLive() {
                                     <div className="flex items-center gap-2">
                                         <code className="flex-1 text-xs bg-zinc-100 px-2 py-1 rounded truncate max-w-md" dir="ltr">{csvUrl(e.key)}</code>
                                         <Button size="sm" variant="ghost" onClick={() => copy(csvUrl(e.key))} disabled={!token} data-testid={`live-copy-${e.key}`}><Copy className="w-4 h-4" /></Button>
+                                        <Button size="sm" variant="outline" onClick={() => {
+                                            const tok = localStorage.getItem("token");
+                                            fetch(`${backend}/api/live-data/template/${e.key}.xlsx`, { headers: { Authorization: `Bearer ${tok}` } })
+                                                .then(r => r.blob()).then(b => {
+                                                    const a = document.createElement("a");
+                                                    a.href = URL.createObjectURL(b); a.download = `Template-${e.key}.xlsx`; a.click();
+                                                });
+                                        }} className="gap-1 text-emerald-600" data-testid={`live-template-${e.key}`}>قالب Excel</Button>
                                     </div>
                                 </td>
                                 <td className="p-3">
