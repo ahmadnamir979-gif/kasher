@@ -1,6 +1,6 @@
 import { Routes, Route, useLocation, Navigate } from "react-router-dom";
 import AppShell, { SideLink } from "@/components/layout/AppShell";
-import { LayoutDashboard, ScanBarcode, Package, ShoppingCart, Truck, Users, UserCog, Receipt, BarChart3, Wallet, Clock, Warehouse, Tag, ArrowLeftRight, Wand2, BellRing, Settings as SettingsIcon, Book, FileText, Landmark, Percent, Lock, Target, DollarSign, ClipboardList, Calendar, Factory, AlertTriangle, Building2, Hash, Calculator, ClipboardCheck, Repeat } from "lucide-react";
+import { LayoutDashboard, ScanBarcode, Package, ShoppingCart, Truck, Users, UserCog, Receipt, BarChart3, Wallet, Clock, Warehouse, Tag, ArrowLeftRight, Wand2, BellRing, Settings as SettingsIcon, Book, FileText, Landmark, Percent, Lock, Target, DollarSign, ClipboardList, Calendar, Factory, AlertTriangle, Building2, Hash, Calculator, ClipboardCheck, Repeat, FileSpreadsheet } from "lucide-react";
 import POS from "@/pages/shop/POS";
 import Products from "@/pages/shop/Products";
 import Sales from "@/pages/shop/Sales";
@@ -39,6 +39,7 @@ import NumberingRule from "@/pages/shop/inventory/NumberingRule";
 import BulkPrice from "@/pages/shop/inventory/BulkPrice";
 import InventoryAdjustments from "@/pages/shop/inventory/InventoryAdjustments";
 import Alternatives from "@/pages/shop/inventory/Alternatives";
+import ExcelLive from "@/pages/shop/inventory/ExcelLive";
 
 const nav = [
     { section: "التشغيل" },
@@ -74,6 +75,7 @@ const nav = [
     { to: "/vat", icon: Percent, label: "كشف الضريبة" },
     { to: "/financial-reports", icon: BarChart3, label: "التقارير المالية" },
     { to: "/closed-periods", icon: Lock, label: "الفترات المغلقة" },
+    { to: "/excel-live", icon: FileSpreadsheet, label: "الربط مع Excel" },
     { section: "أخرى" },
     { to: "/employees", icon: UserCog, label: "الموظفين" },
     { to: "/expenses", icon: Wallet, label: "المصاريف" },
@@ -131,6 +133,7 @@ export default function ShopApp() {
                 <Route path="vat" element={<VatReport />} />
                 <Route path="financial-reports" element={<FinancialReports />} />
                 <Route path="closed-periods" element={<ClosedPeriods />} />
+                <Route path="excel-live" element={<ExcelLive />} />
                 <Route path="employees" element={<Employees />} />
                 <Route path="expenses" element={<Expenses />} />
                 <Route path="shifts" element={<Shifts />} />

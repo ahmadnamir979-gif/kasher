@@ -2169,6 +2169,14 @@ try:
 except Exception as _e:
     logger.exception("Failed to register inventory extras: %s", _e)
 
+# Register live-data (Excel Power Query) routes
+try:
+    from live_data import register as _register_live
+    _register_live(api, db, require_shop_user)
+    logger.info("Live-data module registered.")
+except Exception as _e:
+    logger.exception("Failed to register live-data module: %s", _e)
+
 app.include_router(api)
 
 app.add_middleware(
