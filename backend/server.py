@@ -112,6 +112,7 @@ class ProductIn(BaseModel):
     unit: str = "قطعة"
     tax_rate: float = 0
     is_active: bool = True
+    expiry_date: Optional[str] = None
 
 class WarehouseIn(BaseModel):
     name: str
@@ -917,6 +918,64 @@ async def create_sale(data: SaleIn, user=Depends(require_shop_user)):
             {"id": data.customer_id, "shop_id": sid(user)},
             {"$inc": {"balance": (total - data.paid) * (-1 if data.is_return else 1)}}
         )
+    # Auto-post journal entry for the sale
+    try:
+        from accounting_module import ensure_default_coa, post_journal, get_system_account
+        await ensure_default_coa(db, sid(user))
+        cash_acc = await get_system_account(db, sid(user), "is_cash")
+        recv_acc = await get_system_account(db, sid(user), "is_receivable")
+        rev_acc = await get_system_account(db, sid(user), "is_sales_revenue")
+        ret_acc = await get_system_account(db, sid(user), "is_sales_returns")
+        vat_acc = await get_system_account(db, sid(user), "is_vat_payable")
+        cogs_acc = await get_system_account(db, sid(user), "is_cogs")
+        inv_acc = await get_system_account(db, sid(user), "is_inventory")
+        sign = -1 if data.is_return else 1
+        # Determine debit side (cash or receivable)
+        pay_acc = cash_acc if data.payment_method in ("cash", "card") else recv_acc
+        rev_target = ret_acc if data.is_return else rev_acc
+        base = (subtotal - data.discount) * sign
+        tax_amt = tax * sign
+        lines = []
+        if data.is_return:
+            # Reverse: credit cash, debit sales returns, debit VAT
+            lines.append({"account_id": pay_acc["id"], "account_name": pay_acc["name"], "debit": 0, "credit": abs(total) * -sign})
+            lines.append({"account_id": rev_target["id"], "account_name": rev_target["name"], "debit": abs(base), "credit": 0})
+            if tax_amt and vat_acc:
+                lines.append({"account_id": vat_acc["id"], "account_name": vat_acc["name"], "debit": abs(tax_amt), "credit": 0})
+        else:
+            lines.append({"account_id": pay_acc["id"], "account_name": pay_acc["name"], "debit": total, "credit": 0})
+            lines.append({"account_id": rev_target["id"], "account_name": rev_target["name"], "debit": 0, "credit": base})
+            if tax and vat_acc:
+                lines.append({"account_id": vat_acc["id"], "account_name": vat_acc["name"], "debit": 0, "credit": tax})
+        # COGS
+        if cogs_acc and inv_acc and cost_total:
+            ct = cost_total * sign
+            if data.is_return:
+                lines.append({"account_id": inv_acc["id"], "account_name": inv_acc["name"], "debit": abs(ct), "credit": 0})
+                lines.append({"account_id": cogs_acc["id"], "account_name": cogs_acc["name"], "debit": 0, "credit": abs(ct)})
+            else:
+                lines.append({"account_id": cogs_acc["id"], "account_name": cogs_acc["name"], "debit": cost_total, "credit": 0})
+                lines.append({"account_id": inv_acc["id"], "account_name": inv_acc["name"], "debit": 0, "credit": cost_total})
+        # Balance check with rounding tolerance
+        td = round(sum(l["debit"] for l in lines), 2)
+        tc = round(sum(l["credit"] for l in lines), 2)
+        if td != tc and lines:
+            diff = round(td - tc, 2)
+            if diff > 0:
+                lines[-1]["credit"] += diff
+            else:
+                lines[-1]["debit"] += -diff
+        if lines:
+            await post_journal(db, sid(user), user["id"], {
+                "date": iso(now_utc())[:10],
+                "description": f"فاتورة {'مرتجع' if data.is_return else 'مبيعات'} #{inv_no}",
+                "lines": lines,
+                "reference": f"INV-{inv_no}",
+                "source": "sale",
+                "source_id": doc["id"],
+            })
+    except Exception as _je_err:
+        logger.warning("Failed to post JE for sale: %s", _je_err)
     doc.pop("_id", None)
     return doc
 
@@ -1014,6 +1073,47 @@ async def create_purchase(data: PurchaseIn, user=Depends(require_shop_user)):
             {"id": data.supplier_id, "shop_id": sid(user)},
             {"$inc": {"balance": (total - data.paid) * (1 if not data.is_return else -1)}}
         )
+    # Auto-post journal entry for purchase
+    try:
+        from accounting_module import ensure_default_coa, post_journal, get_system_account
+        await ensure_default_coa(db, sid(user))
+        cash_acc = await get_system_account(db, sid(user), "is_cash")
+        pay_acc = await get_system_account(db, sid(user), "is_payable")
+        inv_acc = await get_system_account(db, sid(user), "is_inventory")
+        vat_acc = await get_system_account(db, sid(user), "is_vat_payable")
+        sign = -1 if data.is_return else 1
+        credit_side = pay_acc if (data.supplier_id and data.paid < total) else cash_acc
+        lines = []
+        if data.is_return:
+            # reverse: credit inventory, debit payable/cash
+            lines.append({"account_id": credit_side["id"], "account_name": credit_side["name"], "debit": abs(total), "credit": 0})
+            lines.append({"account_id": inv_acc["id"], "account_name": inv_acc["name"], "debit": 0, "credit": abs(subtotal - data.discount)})
+            if tax and vat_acc:
+                lines.append({"account_id": vat_acc["id"], "account_name": vat_acc["name"], "debit": 0, "credit": tax})
+        else:
+            lines.append({"account_id": inv_acc["id"], "account_name": inv_acc["name"], "debit": subtotal - data.discount, "credit": 0})
+            if tax and vat_acc:
+                lines.append({"account_id": vat_acc["id"], "account_name": vat_acc["name"], "debit": tax, "credit": 0})
+            lines.append({"account_id": credit_side["id"], "account_name": credit_side["name"], "debit": 0, "credit": total})
+        td = round(sum(l["debit"] for l in lines), 2)
+        tc = round(sum(l["credit"] for l in lines), 2)
+        if td != tc and lines:
+            diff = round(td - tc, 2)
+            if diff > 0:
+                lines[-1]["credit"] += diff
+            else:
+                lines[-1]["debit"] += -diff
+        if lines:
+            await post_journal(db, sid(user), user["id"], {
+                "date": iso(now_utc())[:10],
+                "description": f"فاتورة {'مرتجع مشتريات' if data.is_return else 'مشتريات'} #{inv_no}",
+                "lines": lines,
+                "reference": f"PO-{inv_no}",
+                "source": "purchase",
+                "source_id": doc["id"],
+            })
+    except Exception as _je_err:
+        logger.warning("Failed to post JE for purchase: %s", _je_err)
     doc.pop("_id", None)
     return doc
 
@@ -2039,6 +2139,14 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown():
     client.close()
+
+# Register accounting/expansion module routes (P0 + P1)
+try:
+    from accounting_module import register as _register_accounting
+    _register_accounting(api, db, require_shop_user)
+    logger.info("Accounting module registered.")
+except Exception as _e:
+    logger.exception("Failed to register accounting module: %s", _e)
 
 app.include_router(api)
 
