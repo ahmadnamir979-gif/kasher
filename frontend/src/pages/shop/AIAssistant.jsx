@@ -4,7 +4,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Send, Loader2, TrendingUp, MessageSquare } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Sparkles, Send, Loader2, TrendingUp, MessageSquare, Bell, BellOff, RefreshCw, Settings2, TrendingDown, Wallet, Package, AlertCircle, AlertTriangle, Clock, Receipt as ReceiptIcon, Users, Landmark } from "lucide-react";
 import { toast } from "sonner";
 
 const SUGGESTIONS = [
@@ -15,12 +16,50 @@ const SUGGESTIONS = [
     "شو حالة المخزون؟",
 ];
 
+const SEVERITY_META = {
+    success: { color: "bg-emerald-50 border-emerald-300 text-emerald-900" },
+    info: { color: "bg-blue-50 border-blue-300 text-blue-900" },
+    warning: { color: "bg-amber-50 border-amber-300 text-amber-900" },
+    danger: { color: "bg-rose-50 border-rose-300 text-rose-900" },
+};
+
+const ICON_MAP = {
+    "trending-up": TrendingUp,
+    "trending-down": TrendingDown,
+    "wallet": Wallet,
+    "landmark": Landmark,
+    "package": Package,
+    "alert-circle": AlertCircle,
+    "alert-triangle": AlertTriangle,
+    "clock": Clock,
+    "receipt": ReceiptIcon,
+    "users": Users,
+};
+
 export default function AIAssistant() {
     const [messages, setMessages] = useState([]);
     const [q, setQ] = useState("");
     const [loading, setLoading] = useState(false);
     const [sid, setSid] = useState(null);
+    const [insights, setInsights] = useState(null);
+    const [insightsLoading, setInsightsLoading] = useState(false);
+    const [settings, setSettings] = useState(null);
+    const [settingsOpen, setSettingsOpen] = useState(false);
     const bottomRef = useRef();
+
+    const loadInsights = async (refresh = false) => {
+        setInsightsLoading(true);
+        try {
+            const r = await api.get("/ai/insights", { params: { refresh } });
+            setInsights(r.data);
+        } catch (e) { toast.error(formatApiError(e)); }
+        finally { setInsightsLoading(false); }
+    };
+
+    const loadSettings = async () => {
+        try { const r = await api.get("/ai/insights/settings"); setSettings(r.data); }
+        catch (e) { toast.error(formatApiError(e)); }
+    };
 
     useEffect(() => {
         api.get("/ai/history?limit=10").then(r => {
@@ -32,6 +71,8 @@ export default function AIAssistant() {
             });
             setMessages(msgs);
         }).catch(() => { });
+        loadInsights(false);
+        loadSettings();
     }, []);
 
     useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -50,6 +91,26 @@ export default function AIAssistant() {
             setMessages(m => [...m, { role: "ai", text: `عذراً، حدث خطأ: ${msg}`, error: true }]);
             toast.error(msg);
         } finally { setLoading(false); }
+    };
+
+    const toggleInsights = async () => {
+        if (!settings) return;
+        const newVal = !settings.enabled;
+        try {
+            await api.put("/ai/insights/settings", { ...settings, enabled: newVal });
+            setSettings(s => ({ ...s, enabled: newVal }));
+            toast.success(newVal ? "تم تفعيل التنبيهات الاستباقية" : "تم إيقاف التنبيهات");
+            loadInsights(newVal);
+        } catch (e) { toast.error(formatApiError(e)); }
+    };
+
+    const saveSettings = async () => {
+        try {
+            await api.put("/ai/insights/settings", settings);
+            toast.success("تم الحفظ");
+            setSettingsOpen(false);
+            loadInsights(true);
+        } catch (e) { toast.error(formatApiError(e)); }
     };
 
     const Chart = ({ chart }) => {
@@ -82,7 +143,56 @@ export default function AIAssistant() {
                     <h2 className="text-xl font-bold">المساعد الذكي</h2>
                     <p className="text-sm text-slate-500">اسأل عن محلك بالعربية — GPT مربوط ببياناتك مباشرة</p>
                 </div>
+                {settings && (
+                    <>
+                        <div className="flex items-center gap-2 px-3 py-2 rounded-lg border bg-white">
+                            {settings.enabled ? <Bell className="w-4 h-4 text-emerald-600" /> : <BellOff className="w-4 h-4 text-slate-400" />}
+                            <span className="text-sm">التنبيهات الاستباقية</span>
+                            <button
+                                onClick={toggleInsights}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${settings.enabled ? "bg-emerald-500" : "bg-slate-300"}`}
+                                data-testid="insights-toggle"
+                            >
+                                <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${settings.enabled ? "-translate-x-5" : "-translate-x-1"}`} />
+                            </button>
+                        </div>
+                        <Button variant="outline" size="icon" onClick={() => setSettingsOpen(true)} data-testid="insights-settings-btn"><Settings2 className="w-4 h-4" /></Button>
+                    </>
+                )}
             </div>
+
+            {settings?.enabled && insights && (
+                <Card className="border-zinc-200">
+                    <div className="p-3 border-b bg-gradient-to-l from-amber-50 to-white flex items-center gap-3">
+                        <Bell className="w-5 h-5 text-amber-600" />
+                        <div className="flex-1">
+                            <div className="font-bold text-sm">تنبيهات ذكية استباقية ({insights.alerts?.length || 0})</div>
+                            <div className="text-xs text-slate-500">آخر تحديث: {insights.computed_at?.slice(0, 16).replace("T", " ") || "-"} {insights.fresh && <Badge variant="outline" className="text-emerald-700 border-emerald-300 mr-1">جديد</Badge>}</div>
+                        </div>
+                        <Button size="sm" variant="outline" onClick={() => loadInsights(true)} disabled={insightsLoading} className="gap-1" data-testid="insights-refresh">
+                            {insightsLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}تحديث
+                        </Button>
+                    </div>
+                    <div className="p-3 max-h-[220px] overflow-y-auto space-y-2">
+                        {(insights.alerts || []).length === 0 && (
+                            <div className="text-center py-6 text-sm text-slate-400">لا تنبيهات حالياً — كل شي تحت السيطرة ✓</div>
+                        )}
+                        {(insights.alerts || []).map((a, i) => {
+                            const Icon = ICON_MAP[a.icon] || Sparkles;
+                            const meta = SEVERITY_META[a.severity] || SEVERITY_META.info;
+                            return (
+                                <div key={i} className={`p-3 rounded-lg border ${meta.color} flex items-start gap-3`} data-testid={`insight-${i}`}>
+                                    <Icon className="w-5 h-5 shrink-0 mt-0.5" />
+                                    <div className="flex-1 text-sm">
+                                        <div className="font-bold">{a.title}</div>
+                                        <div className="text-xs opacity-80 mt-1">{a.detail}</div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </Card>
+            )}
 
             <Card className="flex-1 border-zinc-200 flex flex-col overflow-hidden">
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -129,6 +239,25 @@ export default function AIAssistant() {
                     </Button>
                 </div>
             </Card>
+
+            <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader><DialogTitle>إعدادات التنبيهات الاستباقية</DialogTitle></DialogHeader>
+                    {settings && (
+                        <div className="space-y-3">
+                            <div><label className="text-xs">نسبة تغير المبيعات لإطلاق تنبيه (%)</label><Input type="number" step="1" value={settings.sales_change_threshold} onChange={e => setSettings(s => ({ ...s, sales_change_threshold: Number(e.target.value) }))} /></div>
+                            <div><label className="text-xs">نسبة تغير المصاريف (%)</label><Input type="number" step="1" value={settings.expense_change_threshold} onChange={e => setSettings(s => ({ ...s, expense_change_threshold: Number(e.target.value) }))} /></div>
+                            <div><label className="text-xs">حد المخزون المنخفض للأصناف الرائجة</label><Input type="number" min="1" value={settings.stock_low_threshold} onChange={e => setSettings(s => ({ ...s, stock_low_threshold: Number(e.target.value) }))} /></div>
+                            <div><label className="text-xs">حد السيولة المنخفضة</label><Input type="number" step="1" value={settings.cash_low_threshold} onChange={e => setSettings(s => ({ ...s, cash_low_threshold: Number(e.target.value) }))} /></div>
+                            <div><label className="text-xs">أيام مقدمة لتنبيه الشيكات المستحقة</label><Input type="number" min="1" value={settings.check_due_days} onChange={e => setSettings(s => ({ ...s, check_due_days: Number(e.target.value) }))} /></div>
+                            <div className="text-xs text-slate-500 bg-slate-50 p-3 rounded border">
+                                يتم حساب التنبيهات تلقائياً كل 6 ساعات، أو عند الضغط على "تحديث".
+                            </div>
+                        </div>
+                    )}
+                    <DialogFooter><Button variant="outline" onClick={() => setSettingsOpen(false)}>إلغاء</Button><Button onClick={saveSettings} data-testid="insights-save">حفظ</Button></DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

@@ -7,3 +7,11 @@ crons:
     method: POST
     # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
     enabled: true
+
+  - name: ai-insights-daily
+    description: "Computes smart proactive alerts (sales trends, low stock, cash, checks) for every active shop"
+    cron: "0 7 * * *"
+    timezone: "Asia/Jerusalem"
+    endpoint: "{{BASE_URL}}/api/cron/ai-insights"
+    method: GET
+    enabled: true

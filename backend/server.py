@@ -2185,6 +2185,14 @@ try:
 except Exception as _e:
     logger.exception("Failed to register AI/BI module: %s", _e)
 
+# Register AI Smart Insights (proactive alerts)
+try:
+    from ai_insights import register as _register_insights
+    _register_insights(api, db, require_shop_user)
+    logger.info("AI Insights module registered.")
+except Exception as _e:
+    logger.exception("Failed to register AI Insights: %s", _e)
+
 app.include_router(api)
 
 app.add_middleware(
