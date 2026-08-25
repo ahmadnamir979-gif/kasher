@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Percent, RefreshCw, Printer } from "lucide-react";
+import { Percent, RefreshCw, Printer, Download } from "lucide-react";
 import { toast } from "sonner";
 
 export default function VatReport() {
@@ -31,6 +31,16 @@ export default function VatReport() {
                     <p className="text-sm text-slate-500">مقارنة ضريبة المخرجات (مبيعات) بضريبة المدخلات (مشتريات) لفترة محددة</p>
                 </div>
                 {rpt && <Button variant="outline" onClick={() => window.print()} className="gap-1"><Printer className="w-4 h-4" />طباعة</Button>}
+                {rpt && <Button onClick={() => {
+                    const token = localStorage.getItem("token");
+                    const url = `${process.env.REACT_APP_BACKEND_URL}/api/accounting/vat-report/export.xlsx?date_from=${dateFrom}&date_to=${dateTo}`;
+                    fetch(url, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.blob()).then(b => {
+                        const a = document.createElement("a");
+                        a.href = URL.createObjectURL(b);
+                        a.download = `VAT-${dateFrom}-to-${dateTo}.xlsx`;
+                        a.click();
+                    });
+                }} className="gap-1 bg-emerald-600 hover:bg-emerald-700" data-testid="vat-export-xlsx"><Download className="w-4 h-4" />تصدير Excel</Button>}
             </div>
 
             <Card className="p-4 border-zinc-200">

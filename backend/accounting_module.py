@@ -9,9 +9,13 @@ P1: Cost Centers, Currencies, Installments, Purchase/Sales Orders,
 """
 
 from fastapi import HTTPException, Depends, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Literal
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+import io
 import uuid
 
 
@@ -779,6 +783,7 @@ def register(api, db, require_shop_user):
             total_dr += bal_dr
             total_cr += bal_cr
             rows.append({
+                "account_id": a["id"],
                 "code": a["code"],
                 "name": a["name"],
                 "type": a["type"],
@@ -1230,5 +1235,373 @@ def register(api, db, require_shop_user):
                     "balance": round(running, 2),
                 })
         return {"account": acc, "rows": rows, "final_balance": round(running, 2)}
+
+    # ---------- Excel Exports ----------
+    def _xlsx_response(wb: Workbook, filename: str):
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return StreamingResponse(
+            buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+        )
+
+    def _header_style(cell):
+        cell.font = Font(bold=True, color="FFFFFF", size=12)
+        cell.fill = PatternFill("solid", fgColor="1e293b")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = Border(bottom=Side(style="thin"))
+
+    def _cell_border(cell):
+        thin = Side(border_style="thin", color="cccccc")
+        cell.border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    @api.get("/accounting/vat-report/export.xlsx")
+    async def export_vat_xlsx(
+        user=Depends(require_shop_user),
+        date_from: str = Query(...),
+        date_to: str = Query(...),
+    ):
+        # Reuse VAT logic
+        sales = await db.sales.find({
+            "shop_id": _sid(user),
+            "created_at": {"$gte": f"{date_from}T00:00:00", "$lte": f"{date_to}T23:59:59"},
+        }, {"_id": 0}).to_list(10000)
+        purchases = await db.purchases.find({
+            "shop_id": _sid(user),
+            "created_at": {"$gte": f"{date_from}T00:00:00", "$lte": f"{date_to}T23:59:59"},
+        }, {"_id": 0}).to_list(10000)
+        shop = await db.shops.find_one({"id": _sid(user)}, {"_id": 0}) or {}
+
+        def _extract(invs, sign_key="is_return"):
+            base = 0.0
+            tax = 0.0
+            for inv in invs:
+                sign = -1 if inv.get(sign_key) else 1
+                for it in inv.get("items", []):
+                    sub = it.get("qty", 0) * it.get("price", 0) - it.get("discount", 0)
+                    rate = it.get("tax_rate", 0) / 100.0
+                    b = sub / (1 + rate) if rate > 0 else sub
+                    t = sub - b
+                    base += b * sign
+                    tax += t * sign
+            return base, tax
+
+        sales_base, output_vat = _extract(sales)
+        purch_base, input_vat = _extract(purchases)
+        payable = output_vat - input_vat
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "كشف الضريبة"
+        ws.sheet_view.rightToLeft = True
+        ws["A1"] = f"كشف ضريبة القيمة المضافة - {shop.get('name', '')}"
+        ws["A1"].font = Font(bold=True, size=16)
+        ws.merge_cells("A1:D1")
+        ws["A2"] = f"الفترة: من {date_from} إلى {date_to}"
+        ws.merge_cells("A2:D2")
+
+        headers = ["البيان", "المبلغ قبل الضريبة", "الضريبة", "الإجمالي"]
+        for i, h in enumerate(headers, 1):
+            c = ws.cell(row=4, column=i, value=h)
+            _header_style(c)
+
+        rows = [
+            ("إجمالي المبيعات (ضريبة مخرجات)", sales_base, output_vat, sales_base + output_vat),
+            ("إجمالي المشتريات (ضريبة مدخلات)", purch_base, input_vat, purch_base + input_vat),
+        ]
+        for r, row in enumerate(rows, 5):
+            for c, v in enumerate(row, 1):
+                cell = ws.cell(row=r, column=c, value=round(v, 2) if isinstance(v, (int, float)) else v)
+                _cell_border(cell)
+                if c > 1:
+                    cell.number_format = "#,##0.00"
+
+        # Result row
+        ws.cell(row=8, column=1, value="ضريبة القيمة المضافة المستحقة لسلطة الضرائب:").font = Font(bold=True, size=13)
+        result_cell = ws.cell(row=8, column=3, value=round(payable, 2))
+        result_cell.font = Font(bold=True, size=13, color="dc2626" if payable > 0 else "059669")
+        result_cell.number_format = "#,##0.00"
+        result_cell.fill = PatternFill("solid", fgColor="fef3c7" if payable > 0 else "d1fae5")
+
+        for col_letter, w in [("A", 45), ("B", 22), ("C", 22), ("D", 22)]:
+            ws.column_dimensions[col_letter].width = w
+
+        filename = f"VAT-Report-{date_from}-to-{date_to}.xlsx"
+        return _xlsx_response(wb, filename)
+
+    @api.get("/accounting/trial-balance/export.xlsx")
+    async def export_trial_xlsx(
+        user=Depends(require_shop_user),
+        as_of: Optional[str] = None,
+    ):
+        await ensure_default_coa(db, _sid(user))
+        accounts = await db.accounts.find({"shop_id": _sid(user)}, {"_id": 0}).sort("code", 1).to_list(2000)
+        shop = await db.shops.find_one({"id": _sid(user)}, {"_id": 0}) or {}
+        match = {"shop_id": _sid(user)}
+        if as_of:
+            match["date"] = {"$lte": as_of}
+        pipe = [
+            {"$match": match},
+            {"$unwind": "$lines"},
+            {"$group": {"_id": "$lines.account_id", "debit": {"$sum": "$lines.debit"}, "credit": {"$sum": "$lines.credit"}}},
+        ]
+        aggr = {r["_id"]: r async for r in db.journal_entries.aggregate(pipe)}
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "ميزان المراجعة"
+        ws.sheet_view.rightToLeft = True
+        ws["A1"] = f"ميزان المراجعة - {shop.get('name', '')}"
+        ws["A1"].font = Font(bold=True, size=16)
+        ws.merge_cells("A1:F1")
+        ws["A2"] = f"حتى تاريخ: {as_of or _now_iso()[:10]}"
+        ws.merge_cells("A2:F2")
+
+        headers = ["رقم الحساب", "اسم الحساب", "مجموع المدين", "مجموع الدائن", "رصيد مدين", "رصيد دائن"]
+        for i, h in enumerate(headers, 1):
+            _header_style(ws.cell(row=4, column=i, value=h))
+
+        r = 5
+        total_dr = total_cr = 0.0
+        for a in accounts:
+            if a.get("is_group"):
+                continue
+            agg = aggr.get(a["id"], {"debit": 0, "credit": 0})
+            dr = agg["debit"]
+            cr = agg["credit"]
+            balance = dr - cr
+            if a["type"] in ("asset", "expense"):
+                bal_dr = max(balance, 0)
+                bal_cr = max(-balance, 0)
+            else:
+                bal_dr = balance if balance > 0 else 0
+                bal_cr = -balance if balance < 0 else 0
+            if dr == 0 and cr == 0:
+                continue
+            total_dr += bal_dr
+            total_cr += bal_cr
+            ws.cell(row=r, column=1, value=a["code"])
+            ws.cell(row=r, column=2, value=a["name"])
+            for i, v in enumerate([dr, cr, bal_dr, bal_cr], 3):
+                cell = ws.cell(row=r, column=i, value=round(v, 2))
+                cell.number_format = "#,##0.00"
+                _cell_border(cell)
+            r += 1
+
+        # Totals
+        ws.cell(row=r, column=2, value="الإجماليات").font = Font(bold=True)
+        for i, v in enumerate([total_dr, total_cr], 5):
+            cell = ws.cell(row=r, column=i, value=round(v, 2))
+            cell.font = Font(bold=True)
+            cell.number_format = "#,##0.00"
+            cell.fill = PatternFill("solid", fgColor="e5e7eb")
+
+        for col_letter, w in [("A", 14), ("B", 40), ("C", 18), ("D", 18), ("E", 18), ("F", 18)]:
+            ws.column_dimensions[col_letter].width = w
+
+        return _xlsx_response(wb, f"Trial-Balance-{as_of or _now_iso()[:10]}.xlsx")
+
+    @api.get("/accounting/profit-loss/export.xlsx")
+    async def export_pl_xlsx(
+        user=Depends(require_shop_user),
+        date_from: str = Query(...),
+        date_to: str = Query(...),
+    ):
+        await ensure_default_coa(db, _sid(user))
+        accounts = await db.accounts.find(
+            {"shop_id": _sid(user), "type": {"$in": ["revenue", "expense"]}, "is_group": {"$ne": True}},
+            {"_id": 0},
+        ).to_list(500)
+        shop = await db.shops.find_one({"id": _sid(user)}, {"_id": 0}) or {}
+        pipe = [
+            {"$match": {"shop_id": _sid(user), "date": {"$gte": date_from, "$lte": date_to}}},
+            {"$unwind": "$lines"},
+            {"$group": {"_id": "$lines.account_id", "debit": {"$sum": "$lines.debit"}, "credit": {"$sum": "$lines.credit"}}},
+        ]
+        aggr = {r["_id"]: r async for r in db.journal_entries.aggregate(pipe)}
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "الأرباح والخسائر"
+        ws.sheet_view.rightToLeft = True
+        ws["A1"] = f"قائمة الأرباح والخسائر - {shop.get('name', '')}"
+        ws["A1"].font = Font(bold=True, size=16)
+        ws.merge_cells("A1:C1")
+        ws["A2"] = f"من {date_from} إلى {date_to}"
+        ws.merge_cells("A2:C2")
+
+        r = 4
+        _header_style(ws.cell(row=r, column=1, value="الحساب"))
+        _header_style(ws.cell(row=r, column=2, value="النوع"))
+        _header_style(ws.cell(row=r, column=3, value="المبلغ"))
+        r += 1
+
+        total_rev = total_exp = 0.0
+        for a in accounts:
+            agg = aggr.get(a["id"], {"debit": 0, "credit": 0})
+            if a["type"] == "revenue":
+                amt = agg["credit"] - agg["debit"]
+                if amt != 0:
+                    ws.cell(row=r, column=1, value=a["name"])
+                    ws.cell(row=r, column=2, value="إيراد")
+                    c = ws.cell(row=r, column=3, value=round(amt, 2))
+                    c.number_format = "#,##0.00"
+                    c.fill = PatternFill("solid", fgColor="d1fae5")
+                    total_rev += amt
+                    r += 1
+        ws.cell(row=r, column=1, value="إجمالي الإيرادات").font = Font(bold=True)
+        cell = ws.cell(row=r, column=3, value=round(total_rev, 2))
+        cell.font = Font(bold=True)
+        cell.number_format = "#,##0.00"
+        cell.fill = PatternFill("solid", fgColor="a7f3d0")
+        r += 2
+
+        for a in accounts:
+            agg = aggr.get(a["id"], {"debit": 0, "credit": 0})
+            if a["type"] == "expense":
+                amt = agg["debit"] - agg["credit"]
+                if amt != 0:
+                    ws.cell(row=r, column=1, value=a["name"])
+                    ws.cell(row=r, column=2, value="مصروف")
+                    c = ws.cell(row=r, column=3, value=round(amt, 2))
+                    c.number_format = "#,##0.00"
+                    c.fill = PatternFill("solid", fgColor="fee2e2")
+                    total_exp += amt
+                    r += 1
+        ws.cell(row=r, column=1, value="إجمالي المصروفات").font = Font(bold=True)
+        cell = ws.cell(row=r, column=3, value=round(total_exp, 2))
+        cell.font = Font(bold=True)
+        cell.number_format = "#,##0.00"
+        cell.fill = PatternFill("solid", fgColor="fca5a5")
+        r += 2
+
+        net = total_rev - total_exp
+        ws.cell(row=r, column=1, value="صافي الربح" if net >= 0 else "صافي الخسارة").font = Font(bold=True, size=13)
+        cell = ws.cell(row=r, column=3, value=round(abs(net), 2))
+        cell.font = Font(bold=True, size=13, color="059669" if net >= 0 else "dc2626")
+        cell.number_format = "#,##0.00"
+        cell.fill = PatternFill("solid", fgColor="fef3c7")
+
+        for col_letter, w in [("A", 40), ("B", 14), ("C", 20)]:
+            ws.column_dimensions[col_letter].width = w
+
+        return _xlsx_response(wb, f"P&L-{date_from}-to-{date_to}.xlsx")
+
+    @api.get("/accounting/balance-sheet/export.xlsx")
+    async def export_bs_xlsx(
+        user=Depends(require_shop_user),
+        as_of: Optional[str] = None,
+    ):
+        await ensure_default_coa(db, _sid(user))
+        accounts = await db.accounts.find(
+            {"shop_id": _sid(user), "is_group": {"$ne": True}}, {"_id": 0}
+        ).to_list(2000)
+        shop = await db.shops.find_one({"id": _sid(user)}, {"_id": 0}) or {}
+        match = {"shop_id": _sid(user)}
+        if as_of:
+            match["date"] = {"$lte": as_of}
+        pipe = [
+            {"$match": match},
+            {"$unwind": "$lines"},
+            {"$group": {"_id": "$lines.account_id", "debit": {"$sum": "$lines.debit"}, "credit": {"$sum": "$lines.credit"}}},
+        ]
+        aggr = {r["_id"]: r async for r in db.journal_entries.aggregate(pipe)}
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "الميزانية العمومية"
+        ws.sheet_view.rightToLeft = True
+        ws["A1"] = f"الميزانية العمومية - {shop.get('name', '')}"
+        ws["A1"].font = Font(bold=True, size=16)
+        ws.merge_cells("A1:B1")
+        ws["A2"] = f"حتى تاريخ: {as_of or _now_iso()[:10]}"
+        ws.merge_cells("A2:B2")
+
+        r = 4
+        ws.cell(row=r, column=1, value="الأصول").font = Font(bold=True, size=14, color="FFFFFF")
+        ws.cell(row=r, column=1).fill = PatternFill("solid", fgColor="1e293b")
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
+        r += 1
+
+        total_a = total_l = total_e = 0.0
+        net_income = 0.0
+        for a in accounts:
+            agg = aggr.get(a["id"], {"debit": 0, "credit": 0})
+            if a["type"] == "asset":
+                amt = agg["debit"] - agg["credit"]
+                if amt != 0:
+                    ws.cell(row=r, column=1, value=a["name"])
+                    c = ws.cell(row=r, column=2, value=round(amt, 2))
+                    c.number_format = "#,##0.00"
+                    total_a += amt
+                    r += 1
+            elif a["type"] == "revenue":
+                net_income += agg["credit"] - agg["debit"]
+            elif a["type"] == "expense":
+                net_income -= agg["debit"] - agg["credit"]
+
+        ws.cell(row=r, column=1, value="إجمالي الأصول").font = Font(bold=True)
+        c = ws.cell(row=r, column=2, value=round(total_a, 2))
+        c.font = Font(bold=True); c.number_format = "#,##0.00"
+        c.fill = PatternFill("solid", fgColor="e5e7eb")
+        r += 2
+
+        ws.cell(row=r, column=1, value="الخصوم").font = Font(bold=True, size=14, color="FFFFFF")
+        ws.cell(row=r, column=1).fill = PatternFill("solid", fgColor="991b1b")
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
+        r += 1
+        for a in accounts:
+            if a["type"] == "liability":
+                agg = aggr.get(a["id"], {"debit": 0, "credit": 0})
+                amt = agg["credit"] - agg["debit"]
+                if amt != 0:
+                    ws.cell(row=r, column=1, value=a["name"])
+                    c = ws.cell(row=r, column=2, value=round(amt, 2))
+                    c.number_format = "#,##0.00"
+                    total_l += amt
+                    r += 1
+        ws.cell(row=r, column=1, value="إجمالي الخصوم").font = Font(bold=True)
+        c = ws.cell(row=r, column=2, value=round(total_l, 2))
+        c.font = Font(bold=True); c.number_format = "#,##0.00"
+        c.fill = PatternFill("solid", fgColor="fca5a5")
+        r += 2
+
+        ws.cell(row=r, column=1, value="حقوق الملكية").font = Font(bold=True, size=14, color="FFFFFF")
+        ws.cell(row=r, column=1).fill = PatternFill("solid", fgColor="6d28d9")
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
+        r += 1
+        for a in accounts:
+            if a["type"] == "equity":
+                agg = aggr.get(a["id"], {"debit": 0, "credit": 0})
+                amt = agg["credit"] - agg["debit"]
+                if amt != 0:
+                    ws.cell(row=r, column=1, value=a["name"])
+                    c = ws.cell(row=r, column=2, value=round(amt, 2))
+                    c.number_format = "#,##0.00"
+                    total_e += amt
+                    r += 1
+        if net_income != 0:
+            ws.cell(row=r, column=1, value="صافي ربح الفترة").font = Font(italic=True)
+            c = ws.cell(row=r, column=2, value=round(net_income, 2))
+            c.number_format = "#,##0.00"
+            total_e += net_income
+            r += 1
+        ws.cell(row=r, column=1, value="إجمالي حقوق الملكية").font = Font(bold=True)
+        c = ws.cell(row=r, column=2, value=round(total_e, 2))
+        c.font = Font(bold=True); c.number_format = "#,##0.00"
+        c.fill = PatternFill("solid", fgColor="c7d2fe")
+        r += 1
+
+        ws.cell(row=r, column=1, value="إجمالي الخصوم + حقوق الملكية").font = Font(bold=True, size=13)
+        c = ws.cell(row=r, column=2, value=round(total_l + total_e, 2))
+        c.font = Font(bold=True, size=13); c.number_format = "#,##0.00"
+        c.fill = PatternFill("solid", fgColor="fef3c7")
+
+        for col_letter, w in [("A", 45), ("B", 22)]:
+            ws.column_dimensions[col_letter].width = w
+
+        return _xlsx_response(wb, f"Balance-Sheet-{as_of or _now_iso()[:10]}.xlsx")
 
     return api

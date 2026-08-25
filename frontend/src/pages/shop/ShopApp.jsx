@@ -33,6 +33,7 @@ import Installments from "@/pages/shop/accounting/Installments";
 import PricingTiers from "@/pages/shop/accounting/PricingTiers";
 import Manufacturing from "@/pages/shop/accounting/Manufacturing";
 import ExpiryAlerts from "@/pages/shop/accounting/ExpiryAlerts";
+import Ledger from "@/pages/shop/accounting/Ledger";
 
 const nav = [
     { section: "التشغيل" },
@@ -55,6 +56,7 @@ const nav = [
     { section: "المحاسبة" },
     { to: "/accounts", icon: Book, label: "فهرس الحسابات" },
     { to: "/journal", icon: FileText, label: "اليومية العامة" },
+    { to: "/ledger", icon: Book, label: "دفتر الأستاذ" },
     { to: "/vouchers", icon: Receipt, label: "السندات (قبض/صرف)" },
     { to: "/banks", icon: Landmark, label: "البنوك والشيكات" },
     { to: "/cost-centers", icon: Target, label: "مراكز التكلفة" },
@@ -106,6 +108,7 @@ export default function ShopApp() {
                 <Route path="pricing-tiers" element={<PricingTiers />} />
                 <Route path="accounts" element={<ChartOfAccounts />} />
                 <Route path="journal" element={<Journal />} />
+                <Route path="ledger" element={<Ledger />} />
                 <Route path="vouchers" element={<Vouchers />} />
                 <Route path="banks" element={<BanksChecks />} />
                 <Route path="cost-centers" element={<CostCenters />} />

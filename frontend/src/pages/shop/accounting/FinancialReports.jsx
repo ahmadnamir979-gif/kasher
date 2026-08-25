@@ -5,10 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { BarChart3, TrendingUp, Scale, RefreshCw, Printer } from "lucide-react";
+import { BarChart3, TrendingUp, Scale, RefreshCw, Printer, Download } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 export default function FinancialReports() {
+    const navigate = useNavigate();
     const today = new Date().toISOString().slice(0, 10);
     const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
     const [tab, setTab] = useState("trial");
@@ -48,6 +50,24 @@ export default function FinancialReports() {
 
     const doPrint = () => window.print();
 
+    const download = (path, filename) => {
+        const token = localStorage.getItem("token");
+        fetch(`${process.env.REACT_APP_BACKEND_URL}/api${path}`, { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => r.blob())
+            .then(b => {
+                const a = document.createElement("a");
+                a.href = URL.createObjectURL(b);
+                a.download = filename;
+                a.click();
+            });
+    };
+
+    const exportCurrent = () => {
+        if (tab === "trial") download(`/accounting/trial-balance/export.xlsx?as_of=${asOf}`, `Trial-${asOf}.xlsx`);
+        else if (tab === "pl") download(`/accounting/profit-loss/export.xlsx?date_from=${dateFrom}&date_to=${dateTo}`, `PL-${dateFrom}-${dateTo}.xlsx`);
+        else download(`/accounting/balance-sheet/export.xlsx?as_of=${asOf}`, `BS-${asOf}.xlsx`);
+    };
+
     return (
         <div className="space-y-4">
             <div className="flex items-center gap-3">
@@ -56,6 +76,7 @@ export default function FinancialReports() {
                     <h2 className="text-xl font-bold">التقارير المالية</h2>
                     <p className="text-sm text-slate-500">ميزان المراجعة • الأرباح والخسائر • الميزانية العمومية</p>
                 </div>
+                <Button onClick={exportCurrent} className="gap-1 bg-emerald-600 hover:bg-emerald-700" data-testid="report-export"><Download className="w-4 h-4" />تصدير Excel</Button>
                 <Button variant="outline" onClick={doPrint} className="gap-1" data-testid="report-print"><Printer className="w-4 h-4" />طباعة</Button>
             </div>
 
@@ -82,8 +103,8 @@ export default function FinancialReports() {
                                 </thead>
                                 <tbody>
                                     {trial.rows.map(r => (
-                                        <tr key={r.code} className="border-b border-zinc-100">
-                                            <td className="p-3 tabular-nums font-mono">{r.code}</td>
+                                        <tr key={r.code} className="border-b border-zinc-100 hover:bg-amber-50/40 cursor-pointer" onClick={() => navigate(`/ledger?account_id=${r.account_id}`)} data-testid={`trial-row-${r.code}`}>
+                                            <td className="p-3 tabular-nums font-mono text-blue-700 hover:underline">{r.code}</td>
                                             <td className="p-3">{r.name}</td>
                                             <td className="p-3 tabular-nums">{fmt(r.debit)}</td>
                                             <td className="p-3 tabular-nums">{fmt(r.credit)}</td>
