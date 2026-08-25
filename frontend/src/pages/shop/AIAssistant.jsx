@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Sparkles, Send, Loader2, TrendingUp, MessageSquare, Bell, BellOff, RefreshCw, Settings2, TrendingDown, Wallet, Package, AlertCircle, AlertTriangle, Clock, Receipt as ReceiptIcon, Users, Landmark } from "lucide-react";
+import { Sparkles, Send, Loader2, TrendingUp, MessageSquare, Bell, BellOff, RefreshCw, Settings2, TrendingDown, Wallet, Package, AlertCircle, AlertTriangle, Clock, Receipt as ReceiptIcon, Users, Landmark, Phone } from "lucide-react";
 import { toast } from "sonner";
 
 const SUGGESTIONS = [
@@ -104,6 +104,18 @@ export default function AIAssistant() {
         } catch (e) { toast.error(formatApiError(e)); }
     };
 
+    const sendWhatsApp = async () => {
+        try {
+            const r = await api.get("/ai/insights/whatsapp-link");
+            if (r.data.alerts_count === 0) {
+                toast.info("لا تنبيهات حرجة لإرسالها");
+                return;
+            }
+            window.open(r.data.url, "_blank");
+            toast.success(`فتح واتساب مع ${r.data.alerts_count} تنبيه`);
+        } catch (e) { toast.error(formatApiError(e)); }
+    };
+
     const saveSettings = async () => {
         try {
             await api.put("/ai/insights/settings", settings);
@@ -172,6 +184,11 @@ export default function AIAssistant() {
                         <Button size="sm" variant="outline" onClick={() => loadInsights(true)} disabled={insightsLoading} className="gap-1" data-testid="insights-refresh">
                             {insightsLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}تحديث
                         </Button>
+                        {settings?.owner_whatsapp && (insights?.alerts || []).some(a => a.severity === "danger" || a.severity === "warning") && (
+                            <Button size="sm" onClick={sendWhatsApp} className="bg-green-600 hover:bg-green-700 text-white gap-1" data-testid="insights-wa-btn">
+                                <Phone className="w-3 h-3" />أرسل على واتساب
+                            </Button>
+                        )}
                     </div>
                     <div className="p-3 max-h-[220px] overflow-y-auto space-y-2">
                         {(insights.alerts || []).length === 0 && (
@@ -245,6 +262,20 @@ export default function AIAssistant() {
                     <DialogHeader><DialogTitle>إعدادات التنبيهات الاستباقية</DialogTitle></DialogHeader>
                     {settings && (
                         <div className="space-y-3">
+                            <div className="p-3 bg-green-50 border border-green-200 rounded-lg space-y-2">
+                                <label className="flex items-center gap-2 font-semibold text-green-800">
+                                    <Phone className="w-4 h-4" />
+                                    التنبيهات الحرجة على واتساب صاحب المحل
+                                </label>
+                                <Input
+                                    placeholder="+972501234567 أو 0501234567"
+                                    dir="ltr"
+                                    value={settings.owner_whatsapp || ""}
+                                    onChange={e => setSettings(s => ({ ...s, owner_whatsapp: e.target.value }))}
+                                    data-testid="insights-wa-phone"
+                                />
+                                <div className="text-xs text-green-700">أضف رقمك ليظهر زر "أرسل على واتساب" — يفتح واتساب برسالة تحوي كل التنبيهات الحرجة جاهزة للإرسال.</div>
+                            </div>
                             <div><label className="text-xs">نسبة تغير المبيعات لإطلاق تنبيه (%)</label><Input type="number" step="1" value={settings.sales_change_threshold} onChange={e => setSettings(s => ({ ...s, sales_change_threshold: Number(e.target.value) }))} /></div>
                             <div><label className="text-xs">نسبة تغير المصاريف (%)</label><Input type="number" step="1" value={settings.expense_change_threshold} onChange={e => setSettings(s => ({ ...s, expense_change_threshold: Number(e.target.value) }))} /></div>
                             <div><label className="text-xs">حد المخزون المنخفض للأصناف الرائجة</label><Input type="number" min="1" value={settings.stock_low_threshold} onChange={e => setSettings(s => ({ ...s, stock_low_threshold: Number(e.target.value) }))} /></div>

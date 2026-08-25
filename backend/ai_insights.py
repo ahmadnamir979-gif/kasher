@@ -23,6 +23,8 @@ class InsightsSettingsIn(BaseModel):
     expense_change_threshold: float = 25.0
     cash_low_threshold: float = 500.0
     check_due_days: int = 7  # alert for checks due within N days
+    owner_whatsapp: Optional[str] = ""  # E.g., +972501234567
+    whatsapp_alerts_enabled: bool = False  # send critical alerts via WA link
 
 
 async def _compute_insights(db, shop_id: str, settings: dict):
@@ -280,5 +282,33 @@ def register(api, db, require_shop_user):
             })
             computed += 1
         return {"ok": True, "shops_computed": computed}
+
+    @api.get("/ai/insights/whatsapp-link")
+    async def whatsapp_link(user=Depends(require_shop_user)):
+        """Return a wa.me link pre-filled with the current critical alerts."""
+        from urllib.parse import quote
+        s = await db.ai_insights_settings.find_one({"shop_id": _sid(user)}, {"_id": 0}) or {}
+        phone = (s.get("owner_whatsapp") or "").strip().replace("+", "").replace(" ", "").replace("-", "")
+        if not phone:
+            raise HTTPException(400, "لم يتم إضافة رقم واتساب صاحب المحل")
+        latest = await db.ai_alerts.find_one({"shop_id": _sid(user)}, {"_id": 0}, sort=[("created_at", -1)])
+        alerts = (latest or {}).get("alerts", [])
+        # Include only warning/danger
+        critical = [a for a in alerts if a.get("severity") in ("warning", "danger")]
+        shop = await db.shops.find_one({"id": _sid(user)}, {"_id": 0}) or {}
+        header = f"🔔 تنبيهات {shop.get('name', 'محلك')} — {_now().strftime('%Y-%m-%d %H:%M')}"
+        if not critical:
+            body = "لا تنبيهات حرجة حالياً — الوضع تحت السيطرة ✓"
+        else:
+            emoji_map = {"danger": "🔴", "warning": "🟡"}
+            lines = [f"{emoji_map.get(a['severity'], '•')} {a['title']}\n   {a['detail']}" for a in critical[:12]]
+            body = "\n\n".join(lines)
+        msg = f"{header}\n\n{body}"
+        return {
+            "phone": phone,
+            "url": f"https://wa.me/{phone}?text={quote(msg)}",
+            "alerts_count": len(critical),
+            "message_preview": msg,
+        }
 
     return api
