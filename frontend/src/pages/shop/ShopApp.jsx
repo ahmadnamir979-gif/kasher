@@ -90,7 +90,7 @@ const nav = [
 function Sidebar() {
     const { pathname } = useLocation();
     return nav.map((l, i) => l.section
-        ? <div key={`s-${i}`} className="px-3 pt-4 pb-1 text-[10px] uppercase tracking-wider text-slate-400 font-semibold">{l.section}</div>
+        ? <div key={`s-${i}`} className="mx-2 mt-4 mb-1 px-3 py-1.5 rounded bg-gradient-to-l from-blue-500/20 to-blue-500/5 border-r-2 border-amber-400 text-[11px] uppercase tracking-wider text-amber-200 font-bold">{l.section}</div>
         : <SideLink key={l.to} to={l.to} icon={l.icon} active={pathname === l.to}>{l.label}</SideLink>
     );
 }
