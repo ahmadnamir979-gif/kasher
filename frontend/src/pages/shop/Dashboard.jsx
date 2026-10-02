@@ -3,7 +3,22 @@ import { api, fmt, fmtInt } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, ShoppingCart, Users, Receipt, Wallet, CreditCard, HandCoins, Truck, AlertTriangle, Clock, Award, PackageMinus, Bell } from "lucide-react";
+import { TrendingUp, TrendingDown, ShoppingCart, Users, Receipt, Wallet, CreditCard, HandCoins, Truck, AlertTriangle, Clock, Award, PackageMinus, Bell, ScanBarcode, Package, Gift, Star, Book, BarChart3, Warehouse, Sparkles, FileText } from "lucide-react";
+
+const MODULES = [
+    { to: "/pos", icon: ScanBarcode, label: "نقطة البيع", desc: "ابدأ البيع فوراً", color: "from-blue-500 to-blue-700", testid: "mod-pos" },
+    { to: "/products", icon: Package, label: "الأصناف والمخزون", desc: "إدارة المنتجات", color: "from-amber-500 to-amber-700", testid: "mod-products" },
+    { to: "/sales", icon: ShoppingCart, label: "فواتير المبيعات", desc: "عرض ومرتجعات", color: "from-emerald-500 to-emerald-700", testid: "mod-sales" },
+    { to: "/purchases", icon: Truck, label: "فواتير المشتريات", desc: "المشتريات والموردين", color: "from-indigo-500 to-indigo-700", testid: "mod-purchases" },
+    { to: "/customers", icon: Users, label: "الزبائن", desc: "العملاء والديون", color: "from-cyan-500 to-cyan-700", testid: "mod-customers" },
+    { to: "/promotions", icon: Gift, label: "العروض والخصومات", desc: "محرّك العروض", color: "from-pink-500 to-pink-700", testid: "mod-promos" },
+    { to: "/loyalty", icon: Star, label: "نقاط الولاء", desc: "مكافآت الزبائن", color: "from-rose-500 to-rose-700", testid: "mod-loyalty" },
+    { to: "/warehouses", icon: Warehouse, label: "المستودعات", desc: "فروع وتحويلات", color: "from-orange-500 to-orange-700", testid: "mod-warehouses" },
+    { to: "/accounts", icon: Book, label: "المحاسبة", desc: "دليل حسابات ويومية", color: "from-purple-500 to-purple-700", testid: "mod-accounting" },
+    { to: "/cashbox", icon: Wallet, label: "الصندوق والبنك", desc: "الحركات والأرصدة", color: "from-teal-500 to-teal-700", testid: "mod-cashbox" },
+    { to: "/reports", icon: BarChart3, label: "مركز التقارير", desc: "كل التقارير", color: "from-violet-500 to-violet-700", testid: "mod-reports" },
+    { to: "/assistant", icon: Sparkles, label: "المساعد الذكي", desc: "AI لإدارة محلّك", color: "from-fuchsia-500 to-fuchsia-700", testid: "mod-ai" },
+];
 
 export default function Dashboard() {
     const [d, setD] = useState(null);
@@ -17,46 +32,75 @@ export default function Dashboard() {
     const maxChart = Math.max(1, ...d.chart_14d.map(x => x.total));
 
     return (
-        <div className="space-y-4">
-            {/* Row 1: Big numbers */}
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                <KPI icon={ShoppingCart} color="emerald" label="مبيعات اليوم" value={fmt(d.today.total)}
-                     sub={<CompareBadge pct={yestPct} />} onClick={() => nav("/sales")} testid="kpi-today" />
-                <KPI icon={ShoppingCart} color="slate" label="مبيعات أمس" value={fmt(d.yesterday.total)}
-                     sub={`${fmtInt(d.yesterday.count)} فاتورة`} onClick={() => nav("/sales")} testid="kpi-yest" />
-                <KPI icon={TrendingUp} color="amber" label="ربح اليوم" value={fmt(d.today.profit)}
-                     sub="صافي" onClick={() => nav("/reports")} testid="kpi-profit" />
-                <KPI icon={Receipt} color="indigo" label="عدد فواتير اليوم" value={fmtInt(d.today.count)}
-                     sub={`متوسط: ${fmt(d.today.avg_invoice)}`} onClick={() => nav("/sales")} testid="kpi-count" />
-                <KPI icon={Users} color="blue" label="عدد العملاء" value={fmtInt(d.customers_count)}
-                     sub="مسجّلين" onClick={() => nav("/customers")} testid="kpi-customers" />
-                <KPI icon={HandCoins} color="rose" label="إجمالي الديون" value={fmt(d.debts)}
-                     sub="على العملاء" onClick={() => nav("/customer-statement")} testid="kpi-debts" />
+        <div className="space-y-5">
+            {/* ====== MODULE LAUNCHER ====== */}
+            <div>
+                <div className="flex items-center gap-2 mb-3">
+                    <div className="w-1 h-5 bg-amber-500 rounded"></div>
+                    <h3 className="font-bold text-slate-900">الوحدات الرئيسية</h3>
+                    <span className="text-xs text-slate-500">— اضغط للدخول مباشرة</span>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+                    {MODULES.map(m => {
+                        const Icon = m.icon;
+                        return (
+                            <button key={m.to} onClick={() => nav(m.to)} data-testid={m.testid}
+                                className="group relative overflow-hidden text-right bg-white border border-zinc-200 rounded-xl p-4 hover:border-amber-400 hover:shadow-xl hover:-translate-y-1 transition-all duration-200">
+                                <div className={`absolute -top-6 -left-6 w-20 h-20 rounded-full bg-gradient-to-br ${m.color} opacity-10 group-hover:opacity-25 group-hover:scale-125 transition-all`}></div>
+                                <div className={`relative w-11 h-11 rounded-lg bg-gradient-to-br ${m.color} grid place-items-center shadow-md mb-2 group-hover:scale-110 transition`}>
+                                    <Icon className="w-5 h-5 text-white" />
+                                </div>
+                                <div className="relative font-bold text-sm text-slate-900">{m.label}</div>
+                                <div className="relative text-[11px] text-slate-500 mt-0.5">{m.desc}</div>
+                            </button>
+                        );
+                    })}
+                </div>
             </div>
 
-            {/* Row 2: Payments & Purchases */}
+            {/* ====== KPIs ====== */}
+            <div>
+                <div className="flex items-center gap-2 mb-3">
+                    <div className="w-1 h-5 bg-emerald-500 rounded"></div>
+                    <h3 className="font-bold text-slate-900">نظرة سريعة على اليوم</h3>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                    <KPI icon={ShoppingCart} color="emerald" label="مبيعات اليوم" value={fmt(d.today.total)}
+                        sub={<CompareBadge pct={yestPct} />} onClick={() => nav("/sales")} testid="kpi-today" />
+                    <KPI icon={ShoppingCart} color="slate" label="مبيعات أمس" value={fmt(d.yesterday.total)}
+                        sub={`${fmtInt(d.yesterday.count)} فاتورة`} onClick={() => nav("/sales")} testid="kpi-yest" />
+                    <KPI icon={TrendingUp} color="amber" label="ربح اليوم" value={fmt(d.today.profit)}
+                        sub="صافي" onClick={() => nav("/reports")} testid="kpi-profit" />
+                    <KPI icon={Receipt} color="indigo" label="عدد فواتير اليوم" value={fmtInt(d.today.count)}
+                        sub={`متوسط: ${fmt(d.today.avg_invoice)}`} onClick={() => nav("/sales")} testid="kpi-count" />
+                    <KPI icon={Users} color="blue" label="عدد العملاء" value={fmtInt(d.customers_count)}
+                        sub="مسجّلين" onClick={() => nav("/customers")} testid="kpi-customers" />
+                    <KPI icon={HandCoins} color="rose" label="إجمالي الديون" value={fmt(d.debts)}
+                        sub="على العملاء" onClick={() => nav("/customer-statement")} testid="kpi-debts" />
+                </div>
+            </div>
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <KPI icon={Wallet} color="emerald" label="النقد بالصندوق" value={fmt(d.cash_in_drawer)}
-                     onClick={() => nav("/cashbox")} testid="kpi-cash" />
+                    onClick={() => nav("/cashbox")} testid="kpi-cash" />
                 <KPI icon={Wallet} color="emerald" label="مبيعات نقدية اليوم" value={fmt(d.today.cash)}
-                     onClick={() => nav("/cashbox")} testid="kpi-cash-today" />
+                    onClick={() => nav("/cashbox")} testid="kpi-cash-today" />
                 <KPI icon={CreditCard} color="blue" label="مبيعات البطاقات" value={fmt(d.today.card)}
-                     onClick={() => nav("/sales")} testid="kpi-card" />
+                    onClick={() => nav("/sales")} testid="kpi-card" />
                 <KPI icon={Truck} color="violet" label="مشتريات اليوم" value={fmt(d.purchases_today.total)}
-                     sub={`${fmtInt(d.purchases_today.count)} فاتورة`} onClick={() => nav("/purchases")} testid="kpi-pur" />
+                    sub={`${fmtInt(d.purchases_today.count)} فاتورة`} onClick={() => nav("/purchases")} testid="kpi-pur" />
             </div>
 
-            {/* Row 3: Inventory alerts */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <KPI icon={PackageMinus} color="rose" label="أصناف ناقصة" value={fmtInt(d.low_stock_count)}
-                     sub="تحت الحد الأدنى" onClick={() => nav("/products")} testid="kpi-low" />
+                    sub="تحت الحد الأدنى" onClick={() => nav("/products")} testid="kpi-low" />
                 <KPI icon={Clock} color="orange" label="قاربت على الانتهاء" value={fmtInt(d.near_expiry_count)}
-                     sub="خلال 30 يوم" onClick={() => nav("/expiry")} testid="kpi-expiry" />
+                    sub="خلال 30 يوم" onClick={() => nav("/expiry")} testid="kpi-expiry" />
                 <KPI icon={Bell} color="amber" label="تنبيهات مهمة" value={fmtInt(d.alerts.length)}
-                     sub="اضغط للتفاصيل" onClick={() => nav("/assistant")} testid="kpi-alerts" />
+                    sub="اضغط للتفاصيل" onClick={() => nav("/assistant")} testid="kpi-alerts" />
             </div>
 
-            {/* Row 4: Chart + Comparison */}
+            {/* ====== Charts ====== */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <Card className="p-5 lg:col-span-2">
                     <h3 className="font-semibold mb-3">المبيعات — آخر 14 يوم</h3>
@@ -64,7 +108,7 @@ export default function Dashboard() {
                         {d.chart_14d.map((r, i) => (
                             <div key={i} className="flex-1 flex flex-col items-center group cursor-pointer" title={`${r.date}: ${fmt(r.total)}`}>
                                 <div className="w-full bg-gradient-to-t from-amber-500 to-amber-300 hover:from-amber-600 hover:to-amber-400 rounded-t transition-all"
-                                     style={{ height: `${(r.total / maxChart) * 100}%`, minHeight: "4px" }} />
+                                    style={{ height: `${(r.total / maxChart) * 100}%`, minHeight: "4px" }} />
                                 <div className="text-[9px] text-slate-500 mt-1 rotate-45 origin-left">{r.date.substring(5)}</div>
                             </div>
                         ))}
@@ -94,7 +138,6 @@ export default function Dashboard() {
                 </Card>
             </div>
 
-            {/* Row 5: Top 10 + Least */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <Card className="p-5">
                     <div className="flex items-center justify-between mb-3">
@@ -136,7 +179,6 @@ export default function Dashboard() {
                 </Card>
             </div>
 
-            {/* Alerts */}
             {d.alerts.length > 0 && (
                 <Card className="p-5 border-amber-300 bg-amber-50">
                     <h3 className="font-semibold mb-3 flex items-center gap-2 text-amber-900"><AlertTriangle className="w-4 h-4" /> تنبيهات مهمة</h3>
