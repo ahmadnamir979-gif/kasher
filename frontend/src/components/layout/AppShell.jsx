@@ -2,7 +2,6 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { LogOut, ChevronLeft, Store } from "lucide-react";
 import { ReminderBell } from "@/components/ReminderBell";
-import MenuBar from "@/components/layout/MenuBar";
 
 export default function AppShell({ title, sidebar, children, subtitle, actions }) {
     const { user, logout } = useAuth();
@@ -29,8 +28,7 @@ export default function AppShell({ title, sidebar, children, subtitle, actions }
                     </button>
                 </div>
             </div>
-            {/* Classic menu bar with dropdowns */}
-            <MenuBar />
+            {/* Classic sidebar + content */}
             <div className="flex-1 flex min-h-0">
                 {/* Sidebar */}
                 <aside className="w-64 shrink-0 bg-gradient-to-b from-[#1e3a5f] via-[#243f66] to-[#1a2f4a] text-white flex flex-col shadow-xl">
