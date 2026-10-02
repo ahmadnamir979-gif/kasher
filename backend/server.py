@@ -149,6 +149,12 @@ class CustomerPatch(BaseModel):
     email: Optional[str] = None
     address: Optional[str] = None
 
+class SupplierPatch(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+
 class EmployeeIn(BaseModel):
     email: EmailStr
     name: str
@@ -669,6 +675,63 @@ async def create_supplier(data: SupplierIn, user=Depends(require_shop_user)):
 async def delete_supplier(sid_: str, user=Depends(require_shop_user)):
     await db.suppliers.delete_one({"id": sid_, "shop_id": sid(user)})
     return {"ok": True}
+
+@api.patch("/suppliers/{sid_}")
+async def update_supplier(sid_: str, data: SupplierPatch, user=Depends(require_shop_user)):
+    upd = {k: v for k, v in data.model_dump().items() if v is not None}
+    if not upd:
+        return {"ok": True}
+    r = await db.suppliers.update_one({"id": sid_, "shop_id": sid(user)}, {"$set": upd})
+    if r.matched_count == 0:
+        raise HTTPException(404, "المورد غير موجود")
+    return {"ok": True}
+
+# ---------- Payroll Report ----------
+@api.get("/reports/payroll")
+async def payroll_report(user=Depends(require_shop_user), days: int = 30):
+    """Compute payroll per employee: salary − loans in period."""
+    emps = await db.users.find(
+        {"shop_id": sid(user), "role": {"$in": ["cashier", "accountant", "manager"]}},
+        {"_id": 0, "password_hash": 0}
+    ).sort("name", 1).to_list(1000)
+    rows = []
+    for e in emps:
+        stype = e.get("salary_type") or "monthly"
+        base = float(e.get("salary_amount") or 0)
+        # Compute gross for period
+        if stype == "monthly":
+            gross = round(base * (days / 30.0), 2)
+            unit_desc = f"{base:.2f} شهري × {days}/30 يوم"
+        elif stype == "daily":
+            gross = round(base * days, 2)
+            unit_desc = f"{base:.2f} يومي × {days} يوم"
+        else:  # hourly — assume 8h/day
+            hours = days * 8
+            gross = round(base * hours, 2)
+            unit_desc = f"{base:.2f} ساعة × {hours} ساعة"
+        # Sum of loans in this period (last `days` days)
+        from datetime import timedelta as _td
+        cutoff = (now_utc() - _td(days=days)).date().isoformat()
+        loans = await db.employee_loans.find(
+            {"shop_id": sid(user), "employee_id": e["id"], "date": {"$gte": cutoff}},
+            {"_id": 0}
+        ).to_list(1000)
+        loans_total = round(sum(float(l.get("amount", 0)) for l in loans), 2)
+        net = round(gross - loans_total, 2)
+        rows.append({
+            "employee_id": e["id"], "name": e["name"],
+            "position": e.get("position") or "",
+            "salary_type": stype, "salary_amount": base,
+            "unit_desc": unit_desc,
+            "days": days, "gross": gross,
+            "loans_count": len(loans), "loans_total": loans_total,
+            "net": net,
+        })
+    total_gross = round(sum(r["gross"] for r in rows), 2)
+    total_loans = round(sum(r["loans_total"] for r in rows), 2)
+    total_net = round(sum(r["net"] for r in rows), 2)
+    return {"days": days, "rows": rows,
+            "totals": {"gross": total_gross, "loans": total_loans, "net": total_net}}
 
 # ---------- Debt Reminders ----------
 def _default_reminder_msg(shop_name: str, customer_name: str, amount: float) -> str:

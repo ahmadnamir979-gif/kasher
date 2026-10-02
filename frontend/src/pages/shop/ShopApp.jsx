@@ -19,6 +19,7 @@ import Migration from "@/pages/shop/Migration";
 import Reminders from "@/pages/shop/Reminders";
 import Settings from "@/pages/shop/Settings";
 import AuditLog from "@/pages/shop/AuditLog";
+import Payroll from "@/pages/shop/Payroll";
 import CustomerDisplay from "@/pages/shop/CustomerDisplay";
 import { RenewSuccess, RenewCancel } from "@/pages/shop/Renew";
 import ChartOfAccounts from "@/pages/shop/accounting/ChartOfAccounts";
@@ -131,6 +132,7 @@ const SECTIONS = [
         key: "admin", title: "الإدارة", icon: UserCog, color: "from-cyan-500/30 to-cyan-500/5",
         items: [
             { to: "/employees", icon: UserCog, label: "الموظفين والصلاحيات" },
+            { to: "/payroll", icon: BarChart3, label: "تقرير الرواتب" },
             { to: "/expenses", icon: Wallet, label: "المصاريف" },
             { to: "/shifts", icon: Clock, label: "الورديات" },
             { to: "/audit-log", icon: Shield, label: "سجل العمليات" },
@@ -226,6 +228,7 @@ export default function ShopApp() {
                 <Route path="closed-periods" element={<ClosedPeriods />} />
                 <Route path="excel-live" element={<ExcelLive />} />
                 <Route path="employees" element={<Employees />} />
+                <Route path="payroll" element={<Payroll />} />
                 <Route path="expenses" element={<Expenses />} />
                 <Route path="shifts" element={<Shifts />} />
                 <Route path="audit-log" element={<AuditLog />} />

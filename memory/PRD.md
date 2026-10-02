@@ -1,80 +1,56 @@
 # العرّاب (Al-Arraab) — PRD
 
-Arabic POS + Accounting SaaS for supermarkets. Multi-tenant, offline-first,
-full accounting, inventory, promotions, loyalty, AI assistance, Electron wrapper.
-
-## Users
-Super Admin · Shop Owner · Cashier · Accountant · Manager.
+Arabic POS + Accounting SaaS for supermarkets. Multi-tenant, offline-first.
 
 ## Current State (Feb 2026)
 
 ### Dashboard
-- **Customizable module launcher**: 16 colored module cards; owner picks which are
-  visible via "خصّص الوحدات" modal, saved in localStorage.
-- Clickable KPI grid (today, yesterday, month, cash in drawer, debts, etc.),
-  14-day sales chart, MoM comparison, Top 10 / Least active products.
-
-### Universal Search
-`<SearchSelect />` component replaces every lookup dropdown across the app
-(products, suppliers, customers, warehouses, categories, roles, promo types).
+Customizable 16-module launcher (localStorage) + KPIs + charts.
 
 ### POS
-Offline-first; barcode + search + quick-add; **scale barcode support**;
-mixed payments; discounts; held invoices; returns; **auto-apply promotions**
-(debounced /promotions/apply with banner); opens Customer Display window.
+Offline-first; barcode (incl. scale EAN-13); search; mixed payments;
+auto-apply promotions; Customer Display window with beep + yellow flash.
 
-### Customer Display (`/customer-display`)
-Separate windowed screen for the shopper. **Beep sound + yellow screen flash**
-on every scan. Shows last item hero, full cart list, applied promotions,
-totals strip. Realtime via BroadcastChannel.
+### Customers
+Full CRUD page (name/phone/address/email/opening_balance) with search,
+**pencil edit icon**, trash delete, FileText → statement, 3 KPI cards.
 
-### Sales & Customers
-Sales list + returns, customer CRUD, **statement with date-range filter + print**,
-payment collection, debt reminders, installments, **promotions engine**
-(percent/fixed/BOGO/bundle + date/time/day constraints), loyalty points.
+### Suppliers
+Full CRUD page identical structure, **pencil edit icon**, trash delete,
+FileText → statement, 3 KPI cards. New `PATCH /api/suppliers/{id}`.
 
-### Purchases & Suppliers
-Purchases with payment_method/discount/extra_charges/returns, orders, supplier
-CRUD, **statement with date-range filter + print**, payment to supplier.
+### Debts (Reminders)
+Already full: debtors cards with pencil edit, add debtor, reminders with
+repeat/WhatsApp.
 
-### Inventory
-Products with full fields (wholesale price, supplier, location). Numbering,
-bulk price, alternatives, adjustments, warehouses, transfers, Kardex, dead
-stock, expiry alerts, barcode labels, manufacturing.
+### Employees
+Full form: name, phone, position, hire_date, salary_type (monthly/daily/
+hourly), salary_amount, role, active. Pencil edit, loans dialog
+(amount/reason/date).
 
-### Accounting
-Chart of Accounts, Journal, Ledger, Vouchers, Cashbox, Banks & Checks,
-Fixed Assets, Cost Centers, Currencies, Closed Periods.
+### Payroll Report (NEW)
+`/api/reports/payroll?days=N` computes gross by salary_type × days −
+loans in the period = net. Period picker 7/15/30/90, print, 3 KPIs
+(gross/loans/net).
 
-### Reports (own section)
-Daily sales, Top products, By category, By cashier, Purchases, P&L,
-Balance Sheet, VAT, Excel Live.
+### Statements
+Customer/Supplier statements with **date-from/date-to filter**, period
+totals, print.
 
-### Admin
-- **Employees (new)**: name, phone, position, hire_date, salary_type
-  (monthly/daily/hourly), salary_amount, role, active. Edit action, **loans
-  (سلف) dialog** per employee with amount/reason/date.
-- Expenses with user-chosen date.
-- Shifts.
-- Audit Log.
+### Reports / Accounting / Inventory
+As before (balance-sheet, daily/top/by-cashier/by-category, Kardex,
+dead-stock, cashbox).
 
-### System
-Settings (printer, backup, desktop installer), Migration.
-
-### AI
-Chat assistant + proactive insights.
-
-### Integrations
-Stripe test key · Emergent Universal LLM Key · MongoDB · Electron.
+### Audit Log · Promotions · Loyalty · Shifts · Backup
 
 ## Backlog
-- Multiple units per product (crate ↔ piece).
-- Twilio automated WhatsApp daily alerts.
-- ESL · RFID · Check reader integrations.
-- Granular per-button permissions UI.
-- Price change history view.
+- Multiple units per product.
+- Twilio automated WhatsApp.
+- ESL · RFID · Check reader.
+- Price change history view on product detail.
 - MongoDB Atlas production migration.
 - Advertisement slideshow on Customer Display when idle.
+- Loss/anomaly detection (unusual voids / price changes).
 
 ## Test Credentials
 See `/app/memory/test_credentials.md`.
