@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Plus, Trash2, Gift } from "lucide-react";
 import { toast } from "sonner";
+import SearchSelect from "@/components/SearchSelect";
 
 const KINDS = {
     percent: "خصم نسبة %",
@@ -68,9 +69,10 @@ export default function Promotions() {
                         <div className="space-y-3">
                             <div><Label>اسم العرض</Label><Input value={form.name} onChange={(e) => setForm(f => ({...f, name: e.target.value}))} data-testid="promo-name" /></div>
                             <div><Label>نوع العرض</Label>
-                                <select value={form.kind} onChange={(e) => setForm(f => ({...f, kind: e.target.value}))} className="w-full h-10 border border-zinc-200 rounded-md px-3 bg-white mt-1" data-testid="promo-kind">
-                                    {Object.entries(KINDS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                                </select></div>
+                                <SearchSelect value={form.kind} onChange={(v) => setForm(f => ({...f, kind: v}))}
+                                    options={Object.entries(KINDS).map(([k, v]) => ({ value: k, label: v }))}
+                                    testid="promo-kind" className="mt-1" />
+                            </div>
                             {form.kind === "percent" && (
                                 <div><Label>نسبة الخصم %</Label><Input type="number" value={form.percent_off} onChange={(e) => setForm(f => ({...f, percent_off: +e.target.value}))} /></div>
                             )}
@@ -93,10 +95,10 @@ export default function Promotions() {
                                 </div>
                             )}
                             <div><Label>الصنف (اختياري)</Label>
-                                <select value={form.product_id} onChange={(e) => setForm(f => ({...f, product_id: e.target.value}))} className="w-full h-10 border border-zinc-200 rounded-md px-3 bg-white mt-1">
-                                    <option value="">— كل الأصناف —</option>
-                                    {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                </select></div>
+                                <SearchSelect value={form.product_id} onChange={(v) => setForm(f => ({...f, product_id: v}))}
+                                    options={products.map(p => ({ value: p.id, label: p.name, hint: p.barcode }))}
+                                    allowEmpty emptyLabel="— كل الأصناف —" placeholder="ابحث عن صنف…" className="mt-1" />
+                            </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div><Label>يبدأ (اختياري)</Label><Input type="date" value={form.starts_at} onChange={(e) => setForm(f => ({...f, starts_at: e.target.value}))} /></div>
                                 <div><Label>ينتهي (اختياري)</Label><Input type="date" value={form.ends_at} onChange={(e) => setForm(f => ({...f, ends_at: e.target.value}))} /></div>

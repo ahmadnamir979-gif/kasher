@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Plus, Trash2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
+import SearchSelect from "@/components/SearchSelect";
 
 export default function Purchases() {
     const [items, setItems] = useState([]);
@@ -115,24 +116,21 @@ function PurchaseDialog(p) {
                 <div className="grid grid-cols-3 gap-3">
                     <div>
                         <Label>المورد</Label>
-                        <select value={p.supplierId} onChange={(e) => p.setSupplierId(e.target.value)} className="w-full h-10 border border-zinc-200 rounded-md px-3 mt-1 bg-white" data-testid="supplier-select">
-                            <option value="">— اختر مورد —</option>
-                            {p.suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                        </select>
+                        <SearchSelect value={p.supplierId} onChange={p.setSupplierId}
+                            options={p.suppliers.map(s => ({ value: s.id, label: s.name, hint: s.phone }))}
+                            allowEmpty emptyLabel="— بدون مورد —" placeholder="ابحث عن المورد…" testid="supplier-select" className="mt-1" />
                     </div>
                     <div>
                         <Label>المخزن</Label>
-                        <select value={p.warehouseId} onChange={(e) => p.setWarehouseId(e.target.value)} className="w-full h-10 border border-zinc-200 rounded-md px-3 mt-1 bg-white">
-                            {p.warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-                        </select>
+                        <SearchSelect value={p.warehouseId} onChange={p.setWarehouseId}
+                            options={p.warehouses.map(w => ({ value: w.id, label: w.name, hint: w.location }))}
+                            placeholder="اختر المخزن…" testid="purchase-warehouse" className="mt-1" />
                     </div>
                     <div>
                         <Label>طريقة الدفع</Label>
-                        <select value={p.paymentMethod} onChange={(e) => p.setPaymentMethod(e.target.value)} className="w-full h-10 border border-zinc-200 rounded-md px-3 mt-1 bg-white" data-testid="payment-method">
-                            <option value="cash">نقدي</option>
-                            <option value="card">بطاقة</option>
-                            <option value="credit">آجل</option>
-                        </select>
+                        <SearchSelect value={p.paymentMethod} onChange={p.setPaymentMethod}
+                            options={[{value:"cash",label:"نقدي"},{value:"card",label:"بطاقة"},{value:"credit",label:"آجل"}]}
+                            testid="payment-method" className="mt-1" />
                     </div>
                 </div>
                 <div className="border border-zinc-200 rounded-md">
@@ -142,11 +140,10 @@ function PurchaseDialog(p) {
                             {p.rows.map((r, i) => (
                                 <tr key={i} className="border-t">
                                     <td className="p-2">
-                                        <select value={r.product_id} onChange={(e) => { const prod = p.products.find(x => x.id === e.target.value); p.setRow(i, { product_id: e.target.value, name: prod?.name || "", price: prod?.cost_price || 0, cost: prod?.cost_price || 0, tax_rate: prod?.tax_rate || 0 }); }}
-                                            className="w-full h-9 border border-zinc-200 rounded px-2 bg-white">
-                                            <option value="">اختر…</option>
-                                            {p.products.map(pr => <option key={pr.id} value={pr.id}>{pr.name}</option>)}
-                                        </select>
+                                        <SearchSelect value={r.product_id}
+                                            onChange={(v) => { const prod = p.products.find(x => x.id === v); p.setRow(i, { product_id: v, name: prod?.name || "", price: prod?.cost_price || 0, cost: prod?.cost_price || 0, tax_rate: prod?.tax_rate || 0 }); }}
+                                            options={p.products.map(pr => ({ value: pr.id, label: pr.name, hint: pr.barcode }))}
+                                            placeholder="ابحث عن صنف…" testid={`purchase-row-product-${i}`} />
                                     </td>
                                     <td className="p-2"><Input type="number" value={r.qty} onChange={(e) => p.setRow(i, { qty: +e.target.value })} className="h-9 w-24" /></td>
                                     <td className="p-2"><Input type="number" value={r.price} onChange={(e) => p.setRow(i, { price: +e.target.value, cost: +e.target.value })} className="h-9 w-28" /></td>

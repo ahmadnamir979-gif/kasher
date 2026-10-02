@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { HandCoins } from "lucide-react";
+import SearchSelect from "@/components/SearchSelect";
 
 export default function CustomerStatement() {
     const [customers, setCustomers] = useState([]);
@@ -36,10 +37,9 @@ export default function CustomerStatement() {
                 <div className="flex items-end gap-3">
                     <div className="flex-1">
                         <Label>اختر العميل</Label>
-                        <select value={selected} onChange={(e) => setSelected(e.target.value)} className="w-full h-10 border border-zinc-200 rounded-md px-3 bg-white mt-1" data-testid="cust-select">
-                            <option value="">—</option>
-                            {customers.map(c => <option key={c.id} value={c.id}>{c.name} — رصيد: {fmt(c.balance || 0)}</option>)}
-                        </select>
+                        <SearchSelect value={selected} onChange={setSelected}
+                            options={customers.map(c => ({ value: c.id, label: c.name, hint: `رصيد: ${fmt(c.balance || 0)} · ${c.phone || ""}` }))}
+                            placeholder="ابحث عن عميل بالاسم أو الهاتف…" testid="cust-select" className="mt-1" />
                     </div>
                     {selected && (
                         <Dialog open={payOpen} onOpenChange={setPayOpen}>
@@ -49,9 +49,9 @@ export default function CustomerStatement() {
                                 <div className="space-y-3">
                                     <div><Label>المبلغ</Label><Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} data-testid="collect-amount" /></div>
                                     <div><Label>طريقة التحصيل</Label>
-                                        <select value={method} onChange={(e) => setMethod(e.target.value)} className="w-full h-10 border border-zinc-200 rounded-md px-3 bg-white mt-1">
-                                            <option value="cash">نقدي</option><option value="card">بطاقة</option><option value="bank">بنك</option>
-                                        </select></div>
+                                        <SearchSelect value={method} onChange={setMethod}
+                                            options={[{value:"cash",label:"نقدي"},{value:"card",label:"بطاقة"},{value:"bank",label:"بنك"}]}
+                                            className="mt-1" /></div>
                                 </div>
                                 <DialogFooter><Button onClick={collect} className="bg-slate-900 text-white" data-testid="save-collect">حفظ التحصيل</Button></DialogFooter>
                             </DialogContent>

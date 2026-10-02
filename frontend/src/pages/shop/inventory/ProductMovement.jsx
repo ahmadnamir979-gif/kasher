@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import SearchSelect from "@/components/SearchSelect";
 
 export default function ProductMovement() {
     const [products, setProducts] = useState([]);
@@ -28,10 +29,9 @@ export default function ProductMovement() {
         <div className="space-y-4">
             <Card className="p-4">
                 <Label>اختر الصنف</Label>
-                <select value={selected} onChange={(e) => setSelected(e.target.value)} className="w-full h-10 border border-zinc-200 rounded-md px-3 bg-white mt-1" data-testid="prod-select">
-                    <option value="">—</option>
-                    {products.map(p => <option key={p.id} value={p.id}>{p.name} ({p.barcode})</option>)}
-                </select>
+                <SearchSelect value={selected} onChange={setSelected}
+                    options={products.map(p => ({ value: p.id, label: p.name, hint: `${p.barcode || ""} · متوفر: ${p.stock}` }))}
+                    placeholder="ابحث بالاسم أو الباركود…" testid="prod-select" className="mt-1" />
             </Card>
             {data && (
                 <Card className="border-zinc-200">

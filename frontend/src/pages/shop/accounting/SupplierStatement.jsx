@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Send } from "lucide-react";
+import SearchSelect from "@/components/SearchSelect";
 
 export default function SupplierStatement() {
     const [suppliers, setSuppliers] = useState([]);
@@ -36,10 +37,9 @@ export default function SupplierStatement() {
                 <div className="flex items-end gap-3">
                     <div className="flex-1">
                         <Label>اختر المورد</Label>
-                        <select value={selected} onChange={(e) => setSelected(e.target.value)} className="w-full h-10 border border-zinc-200 rounded-md px-3 bg-white mt-1" data-testid="sup-select">
-                            <option value="">—</option>
-                            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name} — رصيد: {fmt(s.balance || 0)}</option>)}
-                        </select>
+                        <SearchSelect value={selected} onChange={setSelected}
+                            options={suppliers.map(s => ({ value: s.id, label: s.name, hint: `رصيد: ${fmt(s.balance || 0)} · ${s.phone || ""}` }))}
+                            placeholder="ابحث عن مورد بالاسم أو الهاتف…" testid="sup-select" className="mt-1" />
                     </div>
                     {selected && (
                         <Dialog open={payOpen} onOpenChange={setPayOpen}>
@@ -49,9 +49,9 @@ export default function SupplierStatement() {
                                 <div className="space-y-3">
                                     <div><Label>المبلغ</Label><Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} data-testid="pay-amount" /></div>
                                     <div><Label>طريقة الدفع</Label>
-                                        <select value={method} onChange={(e) => setMethod(e.target.value)} className="w-full h-10 border border-zinc-200 rounded-md px-3 bg-white mt-1">
-                                            <option value="cash">نقدي</option><option value="card">بطاقة</option><option value="bank">بنك</option>
-                                        </select></div>
+                                        <SearchSelect value={method} onChange={setMethod}
+                                            options={[{value:"cash",label:"نقدي"},{value:"card",label:"بطاقة"},{value:"bank",label:"بنك"}]}
+                                            className="mt-1" /></div>
                                 </div>
                                 <DialogFooter><Button onClick={pay} className="bg-slate-900 text-white" data-testid="save-pay">حفظ التسديد</Button></DialogFooter>
                             </DialogContent>

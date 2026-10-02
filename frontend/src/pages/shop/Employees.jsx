@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Badge } from "@/components/ui/badge";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import SearchSelect from "@/components/SearchSelect";
 
 const ROLE_AR = { cashier: "كاشير", accountant: "محاسب", manager: "مدير" };
 
@@ -35,9 +36,10 @@ export default function Employees() {
                             <div><Label>البريد الإلكتروني</Label><Input type="email" value={form.email} onChange={(e) => setForm(f => ({...f, email: e.target.value}))} data-testid="emp-email" /></div>
                             <div><Label>كلمة المرور</Label><Input type="password" value={form.password} onChange={(e) => setForm(f => ({...f, password: e.target.value}))} data-testid="emp-password" /></div>
                             <div><Label>الدور</Label>
-                                <select value={form.role} onChange={(e) => setForm(f => ({...f, role: e.target.value}))} className="w-full h-10 border border-zinc-200 rounded-md px-3 mt-1 bg-white" data-testid="emp-role">
-                                    <option value="cashier">كاشير</option><option value="accountant">محاسب</option><option value="manager">مدير</option>
-                                </select></div>
+                                <SearchSelect value={form.role} onChange={(v) => setForm(f => ({...f, role: v}))}
+                                    options={[{value:"cashier",label:"كاشير"},{value:"accountant",label:"محاسب"},{value:"manager",label:"مدير"}]}
+                                    testid="emp-role" className="mt-1" />
+                            </div>
                         </div>
                         <DialogFooter><Button onClick={save} className="bg-slate-900 hover:bg-slate-800 text-white" data-testid="save-employee-btn">حفظ</Button></DialogFooter>
                     </DialogContent>

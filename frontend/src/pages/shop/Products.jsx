@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Badge } from "@/components/ui/badge";
 import { Plus, Trash2, Tag, FileSpreadsheet, Upload, Download } from "lucide-react";
 import { toast } from "sonner";
+import SearchSelect from "@/components/SearchSelect";
 
 export default function Products() {
     const [items, setItems] = useState([]);
@@ -89,15 +90,15 @@ export default function Products() {
                                 <div><Label>اسم المنتج</Label><Input value={form.name} onChange={(e) => setForm(f => ({...f, name: e.target.value}))} data-testid="prod-name" /></div>
                                 <div><Label>الباركود</Label><Input value={form.barcode} onChange={(e) => setForm(f => ({...f, barcode: e.target.value}))} data-testid="prod-barcode" /></div>
                                 <div><Label>الفئة</Label>
-                                    <select value={form.category_id} onChange={(e) => setForm(f => ({...f, category_id: e.target.value}))} className="w-full h-10 border border-zinc-200 rounded-md px-3 mt-1 bg-white">
-                                        <option value="">— بدون —</option>
-                                        {cats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                    </select></div>
+                                    <SearchSelect value={form.category_id} onChange={(v) => setForm(f => ({...f, category_id: v}))}
+                                        options={cats.map(c => ({ value: c.id, label: c.name }))}
+                                        allowEmpty emptyLabel="— بدون فئة —" placeholder="اختر الفئة…" testid="prod-category" className="mt-1" />
+                                </div>
                                 <div><Label>المخزن</Label>
-                                    <select value={form.warehouse_id} onChange={(e) => setForm(f => ({...f, warehouse_id: e.target.value}))} className="w-full h-10 border border-zinc-200 rounded-md px-3 mt-1 bg-white" data-testid="prod-warehouse">
-                                        <option value="">— الافتراضي —</option>
-                                        {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-                                    </select></div>
+                                    <SearchSelect value={form.warehouse_id} onChange={(v) => setForm(f => ({...f, warehouse_id: v}))}
+                                        options={warehouses.map(w => ({ value: w.id, label: w.name, hint: w.location }))}
+                                        allowEmpty emptyLabel="— الافتراضي —" placeholder="اختر المخزن…" testid="prod-warehouse" className="mt-1" />
+                                </div>
                                 <div><Label>وحدة</Label><Input value={form.unit} onChange={(e) => setForm(f => ({...f, unit: e.target.value}))} /></div>
                                 <div><Label>سعر التكلفة</Label><Input type="number" value={form.cost_price} onChange={(e) => setForm(f => ({...f, cost_price: +e.target.value}))} data-testid="prod-cost" /></div>
                                 <div><Label>سعر البيع</Label><Input type="number" value={form.sale_price} onChange={(e) => setForm(f => ({...f, sale_price: +e.target.value}))} data-testid="prod-price" /></div>
@@ -106,10 +107,10 @@ export default function Products() {
                                 <div><Label>الحد الأدنى</Label><Input type="number" value={form.min_stock} onChange={(e) => setForm(f => ({...f, min_stock: +e.target.value}))} /></div>
                                 <div><Label>نسبة الضريبة %</Label><Input type="number" value={form.tax_rate} onChange={(e) => setForm(f => ({...f, tax_rate: +e.target.value}))} /></div>
                                 <div><Label>المورّد الافتراضي</Label>
-                                    <select value={form.supplier_id} onChange={(e) => setForm(f => ({...f, supplier_id: e.target.value}))} className="w-full h-10 border border-zinc-200 rounded-md px-3 mt-1 bg-white" data-testid="prod-supplier">
-                                        <option value="">— بدون —</option>
-                                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                    </select></div>
+                                    <SearchSelect value={form.supplier_id} onChange={(v) => setForm(f => ({...f, supplier_id: v}))}
+                                        options={suppliers.map(s => ({ value: s.id, label: s.name, hint: s.phone }))}
+                                        allowEmpty emptyLabel="— بدون مورد —" placeholder="ابحث عن مورد…" testid="prod-supplier" className="mt-1" />
+                                </div>
                                 <div><Label>موقع الصنف</Label><Input placeholder="رف A3 / ممر 2…" value={form.location} onChange={(e) => setForm(f => ({...f, location: e.target.value}))} data-testid="prod-location" /></div>
                             </div>
                             <DialogFooter><Button onClick={save} className="bg-slate-900 hover:bg-slate-800 text-white" data-testid="save-product-btn">حفظ المنتج</Button></DialogFooter>
