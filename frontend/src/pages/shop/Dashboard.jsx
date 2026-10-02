@@ -3,7 +3,7 @@ import { api, fmt, fmtInt } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, ShoppingCart, Users, Receipt, Wallet, CreditCard, HandCoins, Truck, AlertTriangle, Clock, Award, PackageMinus, Bell, ScanBarcode, Package, Gift, Star, Book, BarChart3, Warehouse, Sparkles, FileText } from "lucide-react";
+import { TrendingUp, TrendingDown, ShoppingCart, Users, Receipt, Wallet, CreditCard, HandCoins, Truck, AlertTriangle, Clock, Award, PackageMinus, Bell, ScanBarcode, Package, Gift, Star, Book, BarChart3, Warehouse, Sparkles, FileText, Settings, Check } from "lucide-react";
 
 const MODULES = [
     { to: "/pos", icon: ScanBarcode, label: "نقطة البيع", desc: "ابدأ البيع فوراً", color: "from-blue-500 to-blue-700", testid: "mod-pos" },
@@ -18,12 +18,30 @@ const MODULES = [
     { to: "/cashbox", icon: Wallet, label: "الصندوق والبنك", desc: "الحركات والأرصدة", color: "from-teal-500 to-teal-700", testid: "mod-cashbox" },
     { to: "/reports", icon: BarChart3, label: "مركز التقارير", desc: "كل التقارير", color: "from-violet-500 to-violet-700", testid: "mod-reports" },
     { to: "/assistant", icon: Sparkles, label: "المساعد الذكي", desc: "AI لإدارة محلّك", color: "from-fuchsia-500 to-fuchsia-700", testid: "mod-ai" },
+    { to: "/suppliers", icon: Truck, label: "الموردين", desc: "إدارة الموردين", color: "from-slate-500 to-slate-700", testid: "mod-suppliers" },
+    { to: "/employees", icon: Users, label: "الموظفين", desc: "الفريق والرواتب", color: "from-lime-500 to-lime-700", testid: "mod-employees" },
+    { to: "/expenses", icon: Wallet, label: "المصاريف", desc: "النفقات اليومية", color: "from-red-500 to-red-700", testid: "mod-expenses" },
+    { to: "/dead-stock", icon: PackageMinus, label: "الأصناف الراكدة", desc: "البضاعة الراكدة", color: "from-stone-500 to-stone-700", testid: "mod-dead" },
 ];
+
+const PREF_KEY = "pos_dashboard_modules";
+const DEFAULT_SELECTED = ["/pos", "/products", "/sales", "/purchases", "/customers", "/promotions", "/loyalty", "/warehouses", "/accounts", "/cashbox", "/reports", "/assistant"];
 
 export default function Dashboard() {
     const [d, setD] = useState(null);
+    const [picker, setPicker] = useState(false);
+    const [selected, setSelected] = useState(() => {
+        try { const s = JSON.parse(localStorage.getItem(PREF_KEY)); return Array.isArray(s) && s.length ? s : DEFAULT_SELECTED; }
+        catch { return DEFAULT_SELECTED; }
+    });
     const nav = useNavigate();
     useEffect(() => { api.get("/dashboard/summary").then(r => setD(r.data)); }, []);
+    const toggleMod = (to) => setSelected(sel => {
+        const next = sel.includes(to) ? sel.filter(x => x !== to) : [...sel, to];
+        localStorage.setItem(PREF_KEY, JSON.stringify(next));
+        return next;
+    });
+    const visibleModules = MODULES.filter(m => selected.includes(m.to));
     if (!d) return <div className="text-slate-500">جارٍ تحميل لوحة التحكم…</div>;
 
     const momPct = d.prev_month.total > 0 ? ((d.month.total - d.prev_month.total) / d.prev_month.total) * 100 : 0;
@@ -39,9 +57,13 @@ export default function Dashboard() {
                     <div className="w-1 h-5 bg-amber-500 rounded"></div>
                     <h3 className="font-bold text-slate-900">الوحدات الرئيسية</h3>
                     <span className="text-xs text-slate-500">— اضغط للدخول مباشرة</span>
+                    <div className="flex-1" />
+                    <button onClick={() => setPicker(true)} data-testid="customize-dash" className="text-xs text-slate-600 hover:text-slate-900 flex items-center gap-1 border border-zinc-300 hover:border-amber-400 rounded px-3 py-1.5 transition">
+                        <Settings className="w-3.5 h-3.5" /> خصّص الوحدات
+                    </button>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-                    {MODULES.map(m => {
+                    {visibleModules.map(m => {
                         const Icon = m.icon;
                         return (
                             <button key={m.to} onClick={() => nav(m.to)} data-testid={m.testid}
@@ -55,8 +77,44 @@ export default function Dashboard() {
                             </button>
                         );
                     })}
+                    {visibleModules.length === 0 && (
+                        <div className="col-span-full text-center py-8 border-2 border-dashed border-zinc-200 rounded-xl">
+                            <div className="text-slate-400 text-sm">لم تختر أي وحدة لعرضها — اضغط <b className="text-slate-700">"خصّص الوحدات"</b> لاختيار المربعات</div>
+                        </div>
+                    )}
                 </div>
             </div>
+
+            {/* Customize Picker Modal */}
+            {picker && (
+                <div className="fixed inset-0 bg-black/50 z-50 grid place-items-center p-4" onClick={() => setPicker(false)}>
+                    <div onClick={(e) => e.stopPropagation()} dir="rtl" className="bg-white rounded-xl max-w-3xl w-full max-h-[80vh] overflow-hidden flex flex-col shadow-2xl" data-testid="customize-modal">
+                        <div className="p-5 border-b flex items-center justify-between">
+                            <div><h3 className="font-bold text-lg">اختر الوحدات التي تريد عرضها</h3><p className="text-xs text-slate-500 mt-1">{selected.length} من {MODULES.length} وحدة محدّدة · سيتم الحفظ تلقائياً</p></div>
+                            <button onClick={() => setPicker(false)} className="text-slate-500 hover:text-slate-900 w-8 h-8 rounded hover:bg-zinc-100">✕</button>
+                        </div>
+                        <div className="overflow-y-auto p-5 grid grid-cols-2 md:grid-cols-3 gap-2">
+                            {MODULES.map(m => {
+                                const isSel = selected.includes(m.to);
+                                const Icon = m.icon;
+                                return (
+                                    <button key={m.to} onClick={() => toggleMod(m.to)} data-testid={`pick-${m.to.slice(1)}`}
+                                        className={`relative text-right p-3 rounded-lg border-2 transition ${isSel ? "border-emerald-500 bg-emerald-50" : "border-zinc-200 hover:border-zinc-400"}`}>
+                                        {isSel && <div className="absolute top-2 left-2 w-5 h-5 bg-emerald-500 rounded-full grid place-items-center"><Check className="w-3 h-3 text-white" /></div>}
+                                        <div className={`w-8 h-8 rounded bg-gradient-to-br ${m.color} grid place-items-center mb-1`}><Icon className="w-4 h-4 text-white" /></div>
+                                        <div className="font-semibold text-sm">{m.label}</div>
+                                        <div className="text-[10px] text-slate-500">{m.desc}</div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <div className="p-4 border-t bg-zinc-50 flex items-center justify-between">
+                            <button onClick={() => { setSelected(DEFAULT_SELECTED); localStorage.setItem(PREF_KEY, JSON.stringify(DEFAULT_SELECTED)); }} className="text-xs text-slate-600 hover:text-slate-900 underline">استعادة الافتراضي</button>
+                            <button onClick={() => setPicker(false)} className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2 rounded-md text-sm font-semibold">تم</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ====== KPIs ====== */}
             <div>

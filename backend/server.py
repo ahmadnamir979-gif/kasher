@@ -154,7 +154,28 @@ class EmployeeIn(BaseModel):
     name: str
     password: str
     role: Literal["cashier", "accountant", "manager"] = "cashier"
+    phone: Optional[str] = ""
+    position: Optional[str] = ""
+    hire_date: Optional[str] = None  # YYYY-MM-DD
+    salary_type: Literal["monthly", "daily", "hourly"] = "monthly"
+    salary_amount: float = 0
     is_active: bool = True
+
+class EmployeePatch(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    position: Optional[str] = None
+    hire_date: Optional[str] = None
+    salary_type: Optional[Literal["monthly", "daily", "hourly"]] = None
+    salary_amount: Optional[float] = None
+    role: Optional[Literal["cashier", "accountant", "manager"]] = None
+    is_active: Optional[bool] = None
+    password: Optional[str] = None
+
+class LoanIn(BaseModel):
+    amount: float
+    reason: Optional[str] = ""
+    date: Optional[str] = None  # YYYY-MM-DD
 
 class InvoiceItem(BaseModel):
     product_id: str
@@ -199,6 +220,7 @@ class ExpenseIn(BaseModel):
     category: str
     amount: float
     notes: Optional[str] = ""
+    date: Optional[str] = None  # YYYY-MM-DD
 
 class ShiftAction(BaseModel):
     opening_cash: float = 0
@@ -883,6 +905,9 @@ async def create_employee(data: EmployeeIn, user=Depends(require_shop_user)):
         "id": new_id(), "email": email, "name": data.name,
         "password_hash": hash_password(data.password),
         "role": data.role, "shop_id": sid(user), "is_active": data.is_active,
+        "phone": data.phone or "", "position": data.position or "",
+        "hire_date": data.hire_date, "salary_type": data.salary_type,
+        "salary_amount": float(data.salary_amount or 0),
         "created_at": iso(now_utc()),
     }
     await db.users.insert_one(doc)
@@ -890,9 +915,57 @@ async def create_employee(data: EmployeeIn, user=Depends(require_shop_user)):
     doc.pop("_id", None)
     return doc
 
+@api.patch("/employees/{eid}")
+async def update_employee(eid: str, data: EmployeePatch, user=Depends(require_shop_user)):
+    patch = {k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None}
+    if "password" in patch and patch["password"]:
+        patch["password_hash"] = hash_password(patch.pop("password"))
+    else:
+        patch.pop("password", None)
+    r = await db.users.update_one(
+        {"id": eid, "shop_id": sid(user), "role": {"$in": ["cashier", "accountant", "manager"]}},
+        {"$set": patch}
+    )
+    if not r.matched_count:
+        raise HTTPException(404, "الموظف غير موجود")
+    emp = await db.users.find_one({"id": eid}, {"_id": 0, "password_hash": 0})
+    return emp
+
 @api.delete("/employees/{eid}")
 async def delete_employee(eid: str, user=Depends(require_shop_user)):
     await db.users.delete_one({"id": eid, "shop_id": sid(user)})
+    await db.employee_loans.delete_many({"employee_id": eid, "shop_id": sid(user)})
+    return {"ok": True}
+
+# ---------- Employee Loans (سلف الموظفين) ----------
+@api.get("/employees/{eid}/loans")
+async def list_loans(eid: str, user=Depends(require_shop_user)):
+    rows = await db.employee_loans.find(
+        {"employee_id": eid, "shop_id": sid(user)}, {"_id": 0}
+    ).sort("date", -1).to_list(1000)
+    total = round(sum(float(r.get("amount", 0)) for r in rows), 2)
+    return {"rows": rows, "total": total}
+
+@api.post("/employees/{eid}/loans")
+async def add_loan(eid: str, data: LoanIn, user=Depends(require_shop_user)):
+    emp = await db.users.find_one({"id": eid, "shop_id": sid(user)})
+    if not emp:
+        raise HTTPException(404, "الموظف غير موجود")
+    doc = {
+        "id": new_id(), "shop_id": sid(user), "employee_id": eid,
+        "employee_name": emp.get("name", ""),
+        "amount": float(data.amount or 0),
+        "reason": data.reason or "",
+        "date": data.date or now_utc().date().isoformat(),
+        "created_at": iso(now_utc()),
+    }
+    await db.employee_loans.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api.delete("/employees/{eid}/loans/{lid}")
+async def delete_loan(eid: str, lid: str, user=Depends(require_shop_user)):
+    await db.employee_loans.delete_one({"id": lid, "employee_id": eid, "shop_id": sid(user)})
     return {"ok": True}
 
 # ---------- Sales ----------
@@ -1155,8 +1228,18 @@ async def list_expenses(user=Depends(require_shop_user)):
 
 @api.post("/expenses")
 async def create_expense(data: ExpenseIn, user=Depends(require_shop_user)):
-    doc = {"id": new_id(), "shop_id": sid(user), **data.model_dump(),
-           "user_id": user["id"], "created_at": iso(now_utc())}
+    payload = data.model_dump()
+    # Use user-chosen date (YYYY-MM-DD) by setting created_at to that date's noon UTC
+    exp_date = payload.pop("date", None)
+    created_at = iso(now_utc())
+    if exp_date:
+        try:
+            from datetime import datetime as _dt
+            created_at = _dt.fromisoformat(exp_date + "T12:00:00+00:00").isoformat()
+        except Exception:
+            pass
+    doc = {"id": new_id(), "shop_id": sid(user), **payload,
+           "user_id": user["id"], "created_at": created_at}
     await db.expenses.insert_one(doc)
     doc.pop("_id", None)
     return doc

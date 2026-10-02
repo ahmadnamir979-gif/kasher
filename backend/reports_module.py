@@ -83,7 +83,7 @@ def register(api, db, require_shop_user):
         return doc
 
     @api.get("/customers/{cid}/statement")
-    async def customer_statement(cid: str, user=Depends(require_shop_user)):
+    async def customer_statement(cid: str, date_from: Optional[str] = None, date_to: Optional[str] = None, user=Depends(require_shop_user)):
         cust = await db.customers.find_one({"id": cid, "shop_id": sid(user)}, {"_id": 0})
         if not cust:
             raise HTTPException(404, "العميل غير موجود")
@@ -112,14 +112,24 @@ def register(api, db, require_shop_user):
                             "description": f"تحصيل ({p.get('method')})",
                             "debit": 0, "credit": float(p.get("amount", 0))})
         entries.sort(key=lambda e: e["date"])
+        # Compute running balance across ALL entries first
         bal = 0
         for e in entries:
             bal += e["debit"] - e["credit"]
             e["balance"] = round(bal, 2)
-        return {"customer": cust, "entries": entries, "closing_balance": round(bal, 2)}
+        # Then filter visible rows by date range (balance still reflects full history)
+        if date_from:
+            entries = [e for e in entries if e["date"] >= date_from]
+        if date_to:
+            entries = [e for e in entries if e["date"] <= date_to]
+        period_debit = round(sum(e["debit"] for e in entries), 2)
+        period_credit = round(sum(e["credit"] for e in entries), 2)
+        return {"customer": cust, "entries": entries, "closing_balance": round(bal, 2),
+                "period_debit": period_debit, "period_credit": period_credit,
+                "date_from": date_from, "date_to": date_to}
 
     @api.get("/suppliers/{sid_}/statement")
-    async def supplier_statement(sid_: str, user=Depends(require_shop_user)):
+    async def supplier_statement(sid_: str, date_from: Optional[str] = None, date_to: Optional[str] = None, user=Depends(require_shop_user)):
         sup = await db.suppliers.find_one({"id": sid_, "shop_id": sid(user)}, {"_id": 0})
         if not sup:
             raise HTTPException(404, "المورد غير موجود")
@@ -151,7 +161,15 @@ def register(api, db, require_shop_user):
         for e in entries:
             bal += e["credit"] - e["debit"]
             e["balance"] = round(bal, 2)
-        return {"supplier": sup, "entries": entries, "closing_balance": round(bal, 2)}
+        if date_from:
+            entries = [e for e in entries if e["date"] >= date_from]
+        if date_to:
+            entries = [e for e in entries if e["date"] <= date_to]
+        period_debit = round(sum(e["debit"] for e in entries), 2)
+        period_credit = round(sum(e["credit"] for e in entries), 2)
+        return {"supplier": sup, "entries": entries, "closing_balance": round(bal, 2),
+                "period_debit": period_debit, "period_credit": period_credit,
+                "date_from": date_from, "date_to": date_to}
 
     # ============ Product Movement (Kardex) & Dead Stock ============
     @api.get("/products/{pid}/movements")
