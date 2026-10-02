@@ -1,6 +1,6 @@
 import { Routes, Route, useLocation, Navigate } from "react-router-dom";
 import AppShell, { SideLink } from "@/components/layout/AppShell";
-import { LayoutDashboard, ScanBarcode, Package, ShoppingCart, Truck, Users, UserCog, Receipt, BarChart3, Wallet, Clock, Warehouse, Tag, ArrowLeftRight, Wand2, BellRing, Settings as SettingsIcon, Book, FileText, Landmark, Percent, Lock, Target, DollarSign, ClipboardList, Calendar, Factory, AlertTriangle, Building2, Hash, Calculator, ClipboardCheck, Repeat, FileSpreadsheet, Sparkles } from "lucide-react";
+import { LayoutDashboard, ScanBarcode, Package, ShoppingCart, Truck, Users, UserCog, Receipt, BarChart3, Wallet, Clock, Warehouse, Tag, ArrowLeftRight, Wand2, BellRing, Settings as SettingsIcon, Book, FileText, Landmark, Percent, Lock, Target, DollarSign, ClipboardList, Calendar, Factory, AlertTriangle, Building2, Hash, Calculator, ClipboardCheck, Repeat, FileSpreadsheet, Sparkles, Activity, Archive, Scale, HandCoins, Send } from "lucide-react";
 import POS from "@/pages/shop/POS";
 import Products from "@/pages/shop/Products";
 import Sales from "@/pages/shop/Sales";
@@ -40,6 +40,12 @@ import BulkPrice from "@/pages/shop/inventory/BulkPrice";
 import InventoryAdjustments from "@/pages/shop/inventory/InventoryAdjustments";
 import Alternatives from "@/pages/shop/inventory/Alternatives";
 import ExcelLive from "@/pages/shop/inventory/ExcelLive";
+import ProductMovement from "@/pages/shop/inventory/ProductMovement";
+import DeadStock from "@/pages/shop/inventory/DeadStock";
+import CustomerStatement from "@/pages/shop/accounting/CustomerStatement";
+import SupplierStatement from "@/pages/shop/accounting/SupplierStatement";
+import Cashbox from "@/pages/shop/accounting/Cashbox";
+import BalanceSheet from "@/pages/shop/accounting/BalanceSheet";
 import AIAssistant from "@/pages/shop/AIAssistant";
 
 const nav = [
@@ -54,15 +60,19 @@ const nav = [
     { to: "/inventory-adjustments", icon: ClipboardCheck, label: "ضبط المخازن" },
     { to: "/warehouses", icon: Warehouse, label: "المخازن" },
     { to: "/transfers", icon: ArrowLeftRight, label: "تحويلات المخزون" },
+    { to: "/product-movement", icon: Activity, label: "حركة الصنف" },
+    { to: "/dead-stock", icon: Archive, label: "الأصناف الراكدة" },
     { to: "/barcodes", icon: Tag, label: "ملصقات الباركود" },
     { to: "/expiry", icon: AlertTriangle, label: "تواريخ الصلاحية" },
     { to: "/sales", icon: ShoppingCart, label: "المبيعات والمرتجعات" },
     { to: "/purchases", icon: Truck, label: "المشتريات" },
     { to: "/orders", icon: ClipboardList, label: "الطلبيات" },
     { to: "/customers", icon: Users, label: "العملاء" },
+    { to: "/customer-statement", icon: HandCoins, label: "كشف حساب عميل / تحصيل" },
     { to: "/reminders", icon: BellRing, label: "الديون والذمم" },
     { to: "/installments", icon: Calendar, label: "التقسيط" },
     { to: "/suppliers", icon: Truck, label: "الموردين" },
+    { to: "/supplier-statement", icon: Send, label: "كشف حساب مورد / تسديد" },
     { to: "/manufacturing", icon: Factory, label: "التصنيع" },
     { to: "/pricing-tiers", icon: Tag, label: "فئات الأسعار" },
     { section: "المحاسبة" },
@@ -71,11 +81,13 @@ const nav = [
     { to: "/ledger", icon: Book, label: "دفتر الأستاذ" },
     { to: "/vouchers", icon: Receipt, label: "السندات (قبض/صرف)" },
     { to: "/banks", icon: Landmark, label: "البنوك والشيكات" },
+    { to: "/cashbox", icon: Wallet, label: "الصندوق والبنك" },
     { to: "/fixed-assets", icon: Building2, label: "الأصول الثابتة" },
     { to: "/cost-centers", icon: Target, label: "مراكز التكلفة" },
     { to: "/currencies", icon: DollarSign, label: "العملات" },
     { to: "/vat", icon: Percent, label: "كشف الضريبة" },
     { to: "/financial-reports", icon: BarChart3, label: "التقارير المالية" },
+    { to: "/balance-sheet", icon: Scale, label: "الميزانية العمومية" },
     { to: "/closed-periods", icon: Lock, label: "الفترات المغلقة" },
     { to: "/excel-live", icon: FileSpreadsheet, label: "الربط مع Excel" },
     { section: "أخرى" },
@@ -114,15 +126,19 @@ export default function ShopApp() {
                 <Route path="inventory-adjustments" element={<InventoryAdjustments />} />
                 <Route path="warehouses" element={<Warehouses />} />
                 <Route path="transfers" element={<Transfers />} />
+                <Route path="product-movement" element={<ProductMovement />} />
+                <Route path="dead-stock" element={<DeadStock />} />
                 <Route path="barcodes" element={<BarcodeLabels />} />
                 <Route path="expiry" element={<ExpiryAlerts />} />
                 <Route path="sales" element={<Sales />} />
                 <Route path="purchases" element={<Purchases />} />
                 <Route path="orders" element={<Orders />} />
                 <Route path="customers" element={<Customers />} />
+                <Route path="customer-statement" element={<CustomerStatement />} />
                 <Route path="reminders" element={<Reminders />} />
                 <Route path="installments" element={<Installments />} />
                 <Route path="suppliers" element={<Suppliers />} />
+                <Route path="supplier-statement" element={<SupplierStatement />} />
                 <Route path="manufacturing" element={<Manufacturing />} />
                 <Route path="pricing-tiers" element={<PricingTiers />} />
                 <Route path="accounts" element={<ChartOfAccounts />} />
@@ -130,11 +146,13 @@ export default function ShopApp() {
                 <Route path="ledger" element={<Ledger />} />
                 <Route path="vouchers" element={<Vouchers />} />
                 <Route path="banks" element={<BanksChecks />} />
+                <Route path="cashbox" element={<Cashbox />} />
                 <Route path="fixed-assets" element={<FixedAssets />} />
                 <Route path="cost-centers" element={<CostCenters />} />
                 <Route path="currencies" element={<Currencies />} />
                 <Route path="vat" element={<VatReport />} />
                 <Route path="financial-reports" element={<FinancialReports />} />
+                <Route path="balance-sheet" element={<BalanceSheet />} />
                 <Route path="closed-periods" element={<ClosedPeriods />} />
                 <Route path="excel-live" element={<ExcelLive />} />
                 <Route path="employees" element={<Employees />} />

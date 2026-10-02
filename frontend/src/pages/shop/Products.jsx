@@ -17,19 +17,21 @@ export default function Products() {
     const [importResult, setImportResult] = useState(null);
     const [q, setQ] = useState("");
     const fileRef = useRef(null);
-    const [form, setForm] = useState({ name: "", barcode: "", category_id: "", warehouse_id: "", cost_price: 0, sale_price: 0, stock: 0, min_stock: 0, unit: "قطعة", tax_rate: 0, is_active: true });
+    const [form, setForm] = useState({ name: "", barcode: "", category_id: "", warehouse_id: "", supplier_id: "", cost_price: 0, sale_price: 0, wholesale_price: 0, stock: 0, min_stock: 0, unit: "قطعة", tax_rate: 0, location: "", is_active: true });
     const [cat, setCat] = useState({ name: "", color: "#3b82f6" });
     const [warehouses, setWarehouses] = useState([]);
+    const [suppliers, setSuppliers] = useState([]);
 
     const load = async () => {
         setItems((await api.get("/products")).data);
         setCats((await api.get("/categories")).data);
         setWarehouses((await api.get("/warehouses")).data);
+        setSuppliers((await api.get("/suppliers")).data);
     };
     useEffect(() => { load(); }, []);
 
     const save = async () => {
-        try { await api.post("/products", { ...form, category_id: form.category_id || null, warehouse_id: form.warehouse_id || null }); toast.success("تم الحفظ"); setOpen(false); setForm({ name: "", barcode: "", category_id: "", warehouse_id: "", cost_price: 0, sale_price: 0, stock: 0, min_stock: 0, unit: "قطعة", tax_rate: 0, is_active: true }); load(); }
+        try { await api.post("/products", { ...form, category_id: form.category_id || null, warehouse_id: form.warehouse_id || null, supplier_id: form.supplier_id || null }); toast.success("تم الحفظ"); setOpen(false); setForm({ name: "", barcode: "", category_id: "", warehouse_id: "", supplier_id: "", cost_price: 0, sale_price: 0, wholesale_price: 0, stock: 0, min_stock: 0, unit: "قطعة", tax_rate: 0, location: "", is_active: true }); load(); }
         catch (e) { toast.error(formatApiError(e)); }
     };
     const saveCat = async () => {
@@ -99,9 +101,16 @@ export default function Products() {
                                 <div><Label>وحدة</Label><Input value={form.unit} onChange={(e) => setForm(f => ({...f, unit: e.target.value}))} /></div>
                                 <div><Label>سعر التكلفة</Label><Input type="number" value={form.cost_price} onChange={(e) => setForm(f => ({...f, cost_price: +e.target.value}))} data-testid="prod-cost" /></div>
                                 <div><Label>سعر البيع</Label><Input type="number" value={form.sale_price} onChange={(e) => setForm(f => ({...f, sale_price: +e.target.value}))} data-testid="prod-price" /></div>
+                                <div><Label>سعر الجملة</Label><Input type="number" value={form.wholesale_price} onChange={(e) => setForm(f => ({...f, wholesale_price: +e.target.value}))} data-testid="prod-wholesale" /></div>
                                 <div><Label>المخزون الحالي</Label><Input type="number" value={form.stock} onChange={(e) => setForm(f => ({...f, stock: +e.target.value}))} data-testid="prod-stock" /></div>
                                 <div><Label>الحد الأدنى</Label><Input type="number" value={form.min_stock} onChange={(e) => setForm(f => ({...f, min_stock: +e.target.value}))} /></div>
                                 <div><Label>نسبة الضريبة %</Label><Input type="number" value={form.tax_rate} onChange={(e) => setForm(f => ({...f, tax_rate: +e.target.value}))} /></div>
+                                <div><Label>المورّد الافتراضي</Label>
+                                    <select value={form.supplier_id} onChange={(e) => setForm(f => ({...f, supplier_id: e.target.value}))} className="w-full h-10 border border-zinc-200 rounded-md px-3 mt-1 bg-white" data-testid="prod-supplier">
+                                        <option value="">— بدون —</option>
+                                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                    </select></div>
+                                <div><Label>موقع الصنف</Label><Input placeholder="رف A3 / ممر 2…" value={form.location} onChange={(e) => setForm(f => ({...f, location: e.target.value}))} data-testid="prod-location" /></div>
                             </div>
                             <DialogFooter><Button onClick={save} className="bg-slate-900 hover:bg-slate-800 text-white" data-testid="save-product-btn">حفظ المنتج</Button></DialogFooter>
                         </DialogContent>

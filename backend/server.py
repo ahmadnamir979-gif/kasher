@@ -105,14 +105,17 @@ class ProductIn(BaseModel):
     barcode: Optional[str] = ""
     category_id: Optional[str] = None
     warehouse_id: Optional[str] = None
+    supplier_id: Optional[str] = None
     cost_price: float = 0
     sale_price: float = 0
+    wholesale_price: float = 0
     stock: float = 0
     min_stock: float = 0
     unit: str = "قطعة"
     tax_rate: float = 0
     is_active: bool = True
     expiry_date: Optional[str] = None
+    location: Optional[str] = ""
 
 class WarehouseIn(BaseModel):
     name: str
@@ -180,9 +183,17 @@ class PurchaseIn(BaseModel):
     warehouse_id: Optional[str] = None
     items: List[InvoiceItem]
     discount: float = 0
+    extra_charges: float = 0
     paid: float = 0
+    payment_method: Literal["cash", "card", "credit"] = "cash"
     notes: Optional[str] = ""
     is_return: bool = False
+
+class PaymentIn(BaseModel):
+    amount: float
+    method: Literal["cash", "card", "bank"] = "cash"
+    notes: Optional[str] = ""
+    date: Optional[str] = None  # YYYY-MM-DD
 
 class ExpenseIn(BaseModel):
     category: str
@@ -1057,6 +1068,7 @@ async def return_sale(sid_: str, user=Depends(require_shop_user)):
 @api.post("/purchases")
 async def create_purchase(data: PurchaseIn, user=Depends(require_shop_user)):
     subtotal, tax, total, _ = _compute_totals(data.items, data.discount)
+    total += float(data.extra_charges or 0)
     counter = await db.counters.find_one_and_update(
         {"shop_id": sid(user), "type": "purchase"},
         {"$inc": {"value": 1}}, upsert=True, return_document=True
@@ -1067,8 +1079,10 @@ async def create_purchase(data: PurchaseIn, user=Depends(require_shop_user)):
         "supplier_id": data.supplier_id, "supplier_name": data.supplier_name or "",
         "items": [i.model_dump() for i in data.items],
         "subtotal": subtotal, "tax": tax, "discount": data.discount,
+        "extra_charges": float(data.extra_charges or 0),
         "total": total * (-1 if data.is_return else 1),
-        "paid": data.paid, "is_return": data.is_return, "notes": data.notes or "",
+        "paid": data.paid, "payment_method": data.payment_method,
+        "is_return": data.is_return, "notes": data.notes or "",
         "created_at": iso(now_utc()),
     }
     await db.purchases.insert_one(doc)
@@ -2192,6 +2206,14 @@ try:
     logger.info("AI Insights module registered.")
 except Exception as _e:
     logger.exception("Failed to register AI Insights: %s", _e)
+
+# Register Advanced Reports / Statements / Cashbox / Movements
+try:
+    from reports_module import register as _register_reports
+    _register_reports(api, db, require_shop_user)
+    logger.info("Reports module registered.")
+except Exception as _e:
+    logger.exception("Failed to register reports module: %s", _e)
 
 app.include_router(api)
 
