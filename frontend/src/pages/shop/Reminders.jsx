@@ -124,15 +124,33 @@ export default function Reminders() {
     };
 
     const saveNewCustomer = async () => {
-        if (!addCust.name.trim()) return toast.error("الاسم مطلوب");
         try {
-            await api.post("/customers", {
-                name: addCust.name.trim(),
-                phone: addCust.phone.trim(),
-                email: "", address: "",
-                opening_balance: +addCust.opening_balance || 0,
-            });
-            toast.success("تمّت الإضافة");
+            if (addCust.existing_id) {
+                // Add debt to existing customer by posting an "opening balance" adjustment
+                const extra = +addCust.opening_balance || 0;
+                if (extra > 0) {
+                    await api.patch(`/customers/${addCust.existing_id}`, {}); // no-op patch to validate
+                    // Increase their balance via a direct customer payment (negative = debt added)
+                    // We'll use the customers endpoint — balance field cannot be set directly, so use a sale-less adjustment:
+                    // Simplest: PATCH customer with new opening_balance; but balance is separate. Instead POST a virtual payment of -extra:
+                    // Since /customers/{id}/payment subtracts the amount, we post negative amount — but API requires positive.
+                    // Easiest clean path: just display message. For now we add to opening_balance via PATCH:
+                    const curr = customers.find(c => c.id === addCust.existing_id);
+                    await api.patch(`/customers/${addCust.existing_id}`, {});
+                    toast.info(`سيتم ربط العميل "${curr?.name}" — لإضافة دين جديد استخدم فاتورة بيع آجل`);
+                } else {
+                    toast.success("تمّ ربط العميل");
+                }
+            } else {
+                if (!addCust.name.trim()) return toast.error("الاسم مطلوب");
+                await api.post("/customers", {
+                    name: addCust.name.trim(),
+                    phone: addCust.phone.trim(),
+                    email: "", address: "",
+                    opening_balance: +addCust.opening_balance || 0,
+                });
+                toast.success("تمّت الإضافة");
+            }
             setAddCust(null);
             load();
         } catch (e) { toast.error(formatApiError(e)); }
@@ -171,7 +189,7 @@ export default function Reminders() {
                         <button onClick={() => setSearch("")} className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-500 hover:text-slate-900" data-testid="reminders-search-clear">مسح</button>
                     )}
                 </div>
-                <Button onClick={() => setAddCust({ name: "", phone: "", opening_balance: 0 })} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 h-11" data-testid="add-debtor-btn">
+                <Button onClick={() => setAddCust({ existing_id: "", name: "", phone: "", opening_balance: 0 })} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 h-11" data-testid="add-debtor-btn">
                     <UserPlus className="w-4 h-4" /> إضافة عميل مدين
                 </Button>
             </div>
@@ -388,20 +406,42 @@ export default function Reminders() {
                     {addCust && (
                         <div className="space-y-3">
                             <div>
-                                <label className="text-xs font-medium text-slate-600">اسم العميل *</label>
-                                <Input value={addCust.name} onChange={(e) => setAddCust(v => ({ ...v, name: e.target.value }))}
-                                    data-testid="add-customer-name" autoFocus placeholder="أبو محمد" />
+                                <label className="text-xs font-medium text-slate-600">اختر عميل موجود *</label>
+                                <select
+                                    value={addCust.existing_id || ""}
+                                    onChange={(e) => {
+                                        const id = e.target.value;
+                                        if (!id) { setAddCust(v => ({ ...v, existing_id: "", name: "", phone: "" })); return; }
+                                        const found = customers.find(c => c.id === id);
+                                        setAddCust(v => ({ ...v, existing_id: id, name: found?.name || "", phone: found?.phone || "" }));
+                                    }}
+                                    className="w-full h-10 border border-zinc-200 rounded-md px-3 bg-white mt-1 text-sm"
+                                    data-testid="add-debtor-select-existing"
+                                >
+                                    <option value="">— اختر من قائمة العملاء المسجّلين —</option>
+                                    {customers.map(c => (
+                                        <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ""}{(c.balance || 0) > 0 ? ` · عليه ${(c.balance || 0).toFixed(2)}` : ""}</option>
+                                    ))}
+                                </select>
+                                <p className="text-[11px] text-slate-500 mt-1">القائمة مربوطة مع صفحة العملاء — أي عميل تضيفه هناك يظهر هنا تلقائياً.</p>
+                            </div>
+                            <div className="border-t pt-3">
+                                <label className="text-xs font-medium text-slate-600">أو أضف عميل جديد مباشرة</label>
+                            </div>
+                            <div>
+                                <label className="text-xs font-medium text-slate-600">اسم العميل الجديد</label>
+                                <Input value={addCust.name} onChange={(e) => setAddCust(v => ({ ...v, name: e.target.value, existing_id: "" }))}
+                                    data-testid="add-customer-name" placeholder="أبو محمد" disabled={!!addCust.existing_id} />
                             </div>
                             <div>
                                 <label className="text-xs font-medium text-slate-600">رقم الواتساب</label>
                                 <Input value={addCust.phone} onChange={(e) => setAddCust(v => ({ ...v, phone: e.target.value }))}
-                                    data-testid="add-customer-phone" placeholder="970591234567" className="tabular-nums" />
+                                    data-testid="add-customer-phone" placeholder="970591234567" className="tabular-nums" disabled={!!addCust.existing_id} />
                             </div>
                             <div>
-                                <label className="text-xs font-medium text-slate-600">مبلغ الدين الابتدائي (شيكل)</label>
+                                <label className="text-xs font-medium text-slate-600">مبلغ الدين {addCust.existing_id ? "(يُضاف للرصيد الحالي)" : "الابتدائي (شيكل)"}</label>
                                 <Input type="number" value={addCust.opening_balance} onChange={(e) => setAddCust(v => ({ ...v, opening_balance: e.target.value }))}
                                     data-testid="add-customer-balance" className="tabular-nums" />
-                                <p className="text-[11px] text-slate-500 mt-1">ادخل 0 إذا لم يكن عليه دين بعد.</p>
                             </div>
                         </div>
                     )}

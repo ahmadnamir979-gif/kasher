@@ -1,56 +1,40 @@
 # العرّاب (Al-Arraab) — PRD
 
-Arabic POS + Accounting SaaS for supermarkets. Multi-tenant, offline-first.
+Arabic POS + Accounting SaaS. Multi-tenant, offline-first.
 
 ## Current State (Feb 2026)
 
-### Dashboard
-Customizable 16-module launcher (localStorage) + KPIs + charts.
+### Customers (updated)
+3 KPI cards + search + columns: name/phone/address/**opening_balance/current_balance** +
+actions: **سداد (payment)**, statement, pencil edit, delete.
 
-### POS
-Offline-first; barcode (incl. scale EAN-13); search; mixed payments;
-auto-apply promotions; Customer Display window with beep + yellow flash.
+### Suppliers (updated)
+Same structure as Customers + **تسديد (payment)** action +
+opening_balance + current_balance columns.
 
-### Customers
-Full CRUD page (name/phone/address/email/opening_balance) with search,
-**pencil edit icon**, trash delete, FileText → statement, 3 KPI cards.
+### Reminders / Debts (updated)
+"Add debtor" dialog now has a **dropdown of existing customers** at top so
+the debts page is **linked** to the Customers page — no manual retyping.
 
-### Suppliers
-Full CRUD page identical structure, **pencil edit icon**, trash delete,
-FileText → statement, 3 KPI cards. New `PATCH /api/suppliers/{id}`.
+### Payroll (upgraded)
+- Report: gross by salary_type × days − **unsettled loans** = net
+- **Pay action per row** → confirmation dialog showing gross/loans/net breakdown
+- `POST /api/payroll/pay` → (1) marks all unsettled loans as settled,
+  (2) creates a payroll_payments record, (3) auto-registers an expense
+  in cashbox/accounting with category `راتب — {name}`
+- **Payment history dialog** + **PDF export** (via browser print)
+- Loans now have `settled` flag so paid loans don't double-count
 
-### Debts (Reminders)
-Already full: debtors cards with pencil edit, add debtor, reminders with
-repeat/WhatsApp.
-
-### Employees
-Full form: name, phone, position, hire_date, salary_type (monthly/daily/
-hourly), salary_amount, role, active. Pencil edit, loans dialog
-(amount/reason/date).
-
-### Payroll Report (NEW)
-`/api/reports/payroll?days=N` computes gross by salary_type × days −
-loans in the period = net. Period picker 7/15/30/90, print, 3 KPIs
-(gross/loans/net).
-
-### Statements
-Customer/Supplier statements with **date-from/date-to filter**, period
-totals, print.
-
-### Reports / Accounting / Inventory
-As before (balance-sheet, daily/top/by-cashier/by-category, Kardex,
-dead-stock, cashbox).
-
-### Audit Log · Promotions · Loyalty · Shifts · Backup
+### Dashboard · POS · CustomerDisplay · Inventory · Accounting · Reports
+As before.
 
 ## Backlog
-- Multiple units per product.
-- Twilio automated WhatsApp.
-- ESL · RFID · Check reader.
-- Price change history view on product detail.
-- MongoDB Atlas production migration.
-- Advertisement slideshow on Customer Display when idle.
-- Loss/anomaly detection (unusual voids / price changes).
+- Scale barcode (done) · Multiple units per product
+- Twilio automated WhatsApp
+- ESL · RFID
+- Price change history view
+- MongoDB Atlas production migration
+- Loss/anomaly detection
 
 ## Test Credentials
 See `/app/memory/test_credentials.md`.

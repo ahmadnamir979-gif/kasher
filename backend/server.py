@@ -709,11 +709,10 @@ async def payroll_report(user=Depends(require_shop_user), days: int = 30):
             hours = days * 8
             gross = round(base * hours, 2)
             unit_desc = f"{base:.2f} ساعة × {hours} ساعة"
-        # Sum of loans in this period (last `days` days)
-        from datetime import timedelta as _td
-        cutoff = (now_utc() - _td(days=days)).date().isoformat()
+        # Sum of UNSETTLED loans
         loans = await db.employee_loans.find(
-            {"shop_id": sid(user), "employee_id": e["id"], "date": {"$gte": cutoff}},
+            {"shop_id": sid(user), "employee_id": e["id"],
+             "settled": {"$ne": True}},
             {"_id": 0}
         ).to_list(1000)
         loans_total = round(sum(float(l.get("amount", 0)) for l in loans), 2)
@@ -732,6 +731,52 @@ async def payroll_report(user=Depends(require_shop_user), days: int = 30):
     total_net = round(sum(r["net"] for r in rows), 2)
     return {"days": days, "rows": rows,
             "totals": {"gross": total_gross, "loans": total_loans, "net": total_net}}
+
+class PayrollPayIn(BaseModel):
+    employee_id: str
+    gross: float
+    loans_total: float = 0
+    net: float
+    period_days: int = 30
+    notes: Optional[str] = ""
+
+@api.post("/payroll/pay")
+async def pay_payroll(data: PayrollPayIn, user=Depends(require_shop_user)):
+    """تثبيت صرف الراتب: تسوية السلف + تسجيل مصروف + سجل محاسبي."""
+    emp = await db.users.find_one({"id": data.employee_id, "shop_id": sid(user)})
+    if not emp:
+        raise HTTPException(404, "الموظف غير موجود")
+    today = now_utc().date().isoformat()
+    # 1) Mark unsettled loans as settled
+    await db.employee_loans.update_many(
+        {"shop_id": sid(user), "employee_id": data.employee_id, "settled": {"$ne": True}},
+        {"$set": {"settled": True, "settled_at": iso(now_utc())}}
+    )
+    # 2) Create a payroll_payment record
+    doc = {
+        "id": new_id(), "shop_id": sid(user),
+        "employee_id": data.employee_id, "employee_name": emp.get("name", ""),
+        "gross": data.gross, "loans_total": data.loans_total, "net": data.net,
+        "period_days": data.period_days, "notes": data.notes or "",
+        "paid_by": user["id"], "date": today,
+        "created_at": iso(now_utc()),
+    }
+    await db.payroll_payments.insert_one(doc)
+    # 3) Register as an expense (so it affects cashbox + P&L)
+    await db.expenses.insert_one({
+        "id": new_id(), "shop_id": sid(user),
+        "category": f"راتب — {emp.get('name', '')}",
+        "amount": data.net, "notes": f"صرف راتب ({data.period_days} يوم) — صافي بعد السلف",
+        "user_id": user["id"], "created_at": iso(now_utc()),
+    })
+    doc.pop("_id", None)
+    return doc
+
+@api.get("/payroll/payments")
+async def list_payroll_payments(user=Depends(require_shop_user), limit: int = 100):
+    return await db.payroll_payments.find(
+        {"shop_id": sid(user)}, {"_id": 0}
+    ).sort("created_at", -1).to_list(limit)
 
 # ---------- Debt Reminders ----------
 def _default_reminder_msg(shop_name: str, customer_name: str, amount: float) -> str:

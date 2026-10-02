@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Search, Truck, FileText } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Truck, FileText, Send } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 
@@ -14,6 +14,7 @@ export default function Suppliers() {
     const [items, setItems] = useState([]);
     const [q, setQ] = useState("");
     const [dlg, setDlg] = useState(null);
+    const [payDlg, setPayDlg] = useState(null);
     const load = () => api.get("/suppliers").then(r => setItems(r.data));
     useEffect(() => { load(); }, []);
 
@@ -74,7 +75,7 @@ export default function Suppliers() {
                 </div>
                 <table className="w-full text-sm">
                     <thead className="bg-zinc-50 border-b text-right text-xs text-slate-600">
-                        <tr><th className="p-3">الاسم</th><th className="p-3">الهاتف</th><th className="p-3">العنوان</th><th className="p-3">الرصيد المستحق</th><th className="p-3 text-left">إجراءات</th></tr>
+                        <tr><th className="p-3">الاسم</th><th className="p-3">الهاتف</th><th className="p-3">العنوان</th><th className="p-3">الرصيد الافتتاحي</th><th className="p-3">الرصيد المستحق (علينا)</th><th className="p-3 text-left">إجراءات</th></tr>
                     </thead>
                     <tbody>
                         {filtered.map(s => (
@@ -82,9 +83,11 @@ export default function Suppliers() {
                                 <td className="p-3 font-medium">{s.name}</td>
                                 <td className="p-3 tabular-nums text-slate-700">{s.phone || "—"}</td>
                                 <td className="p-3 text-slate-600 text-xs">{s.address || "—"}</td>
-                                <td className={`p-3 tabular-nums font-bold ${(s.balance || 0) > 0 ? "text-rose-700" : "text-slate-400"}`}>{fmt(s.balance || 0)}</td>
+                                <td className="p-3 tabular-nums text-slate-500">{fmt(s.opening_balance || 0)}</td>
+                                <td className={`p-3 tabular-nums font-bold ${(s.balance || 0) > 0 ? "text-rose-700" : "text-slate-400"}`}>{fmt(s.balance || 0)}{(s.balance || 0) > 0 && <div className="text-[10px] font-normal text-rose-500">لم يُسدَّد بعد</div>}</td>
                                 <td className="p-3">
                                     <div className="flex justify-end gap-1.5">
+                                        {(s.balance || 0) > 0 && <Button size="sm" onClick={() => setPayDlg({ supplier: s, amount: s.balance, method: "cash" })} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1 h-8" data-testid={`pay-sup-${s.id}`}><Send className="w-3.5 h-3.5" /> تسديد</Button>}
                                         <Button size="sm" variant="outline" onClick={() => nav(`/supplier-statement`)} className="text-indigo-600" title="كشف حساب" data-testid={`stmt-${s.id}`}><FileText className="w-3.5 h-3.5" /></Button>
                                         <Button size="sm" variant="outline" onClick={() => openEdit(s)} className="text-slate-700" title="تعديل" data-testid={`edit-sup-${s.id}`}><Pencil className="w-3.5 h-3.5" /></Button>
                                         <Button size="sm" variant="outline" onClick={() => del(s)} className="text-rose-600" title="حذف"><Trash2 className="w-3.5 h-3.5" /></Button>
@@ -92,7 +95,7 @@ export default function Suppliers() {
                                 </td>
                             </tr>
                         ))}
-                        {filtered.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-slate-400">{q ? "لا نتائج" : "لا يوجد موردين — ابدأ بإضافة مورد جديد"}</td></tr>}
+                        {filtered.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-slate-400">{q ? "لا نتائج" : "لا يوجد موردين — ابدأ بإضافة مورد جديد"}</td></tr>}
                     </tbody>
                 </table>
             </Card>
@@ -116,6 +119,29 @@ export default function Suppliers() {
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setDlg(null)}>إلغاء</Button>
                         <Button onClick={save} className="bg-slate-900 hover:bg-slate-800 text-white" data-testid="save-sup-btn">{dlg?.mode === "edit" ? "حفظ التعديلات" : "حفظ المورد"}</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            <Dialog open={!!payDlg} onOpenChange={(o) => !o && setPayDlg(null)}>
+                <DialogContent dir="rtl" className="bg-white max-w-md">
+                    <DialogHeader><DialogTitle>تسديد دفعة — {payDlg?.supplier.name}</DialogTitle></DialogHeader>
+                    {payDlg && (
+                        <div className="space-y-3">
+                            <div className="bg-rose-50 border border-rose-200 rounded p-3 text-sm"><span className="text-rose-700 font-semibold">الرصيد المستحق:</span> <span className="tabular-nums font-bold">{fmt(payDlg.supplier.balance)}</span></div>
+                            <div><Label>المبلغ المدفوع</Label><Input type="number" value={payDlg.amount} onChange={(e) => setPayDlg(p => ({...p, amount: e.target.value}))} data-testid="pay-amount" className="tabular-nums" autoFocus /></div>
+                            <div><Label>طريقة الدفع</Label>
+                                <select value={payDlg.method} onChange={(e) => setPayDlg(p => ({...p, method: e.target.value}))} className="w-full h-10 border border-zinc-200 rounded-md px-3 bg-white mt-1">
+                                    <option value="cash">نقدي</option><option value="card">بطاقة</option><option value="bank">بنك</option>
+                                </select></div>
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setPayDlg(null)}>إلغاء</Button>
+                        <Button onClick={async () => {
+                            try { await api.post(`/suppliers/${payDlg.supplier.id}/payment`, { amount: +payDlg.amount, method: payDlg.method });
+                                toast.success("تمّ تسجيل التسديد"); setPayDlg(null); load();
+                            } catch (e) { toast.error(formatApiError(e)); }
+                        }} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2" data-testid="save-pay-sup"><Send className="w-4 h-4" /> حفظ التسديد</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

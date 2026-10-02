@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Search, Users, Phone, MapPin, FileText } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Users, Phone, MapPin, FileText, HandCoins } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 
@@ -13,7 +13,8 @@ export default function Customers() {
     const nav = useNavigate();
     const [items, setItems] = useState([]);
     const [q, setQ] = useState("");
-    const [dlg, setDlg] = useState(null); // {mode: 'add'|'edit', form}
+    const [dlg, setDlg] = useState(null);
+    const [payDlg, setPayDlg] = useState(null);
     const load = () => api.get("/customers").then(r => setItems(r.data));
     useEffect(() => { load(); }, []);
 
@@ -74,7 +75,7 @@ export default function Customers() {
                 </div>
                 <table className="w-full text-sm">
                     <thead className="bg-zinc-50 border-b text-right text-xs text-slate-600">
-                        <tr><th className="p-3">الاسم</th><th className="p-3">الهاتف</th><th className="p-3">العنوان</th><th className="p-3">الرصيد</th><th className="p-3 text-left">إجراءات</th></tr>
+                        <tr><th className="p-3">الاسم</th><th className="p-3">الهاتف</th><th className="p-3">العنوان</th><th className="p-3">الرصيد الافتتاحي</th><th className="p-3">الرصيد الحالي</th><th className="p-3 text-left">إجراءات</th></tr>
                     </thead>
                     <tbody>
                         {filtered.map(c => (
@@ -82,9 +83,11 @@ export default function Customers() {
                                 <td className="p-3 font-medium">{c.name}</td>
                                 <td className="p-3 tabular-nums text-slate-700">{c.phone || "—"}</td>
                                 <td className="p-3 text-slate-600 text-xs">{c.address || "—"}</td>
-                                <td className={`p-3 tabular-nums font-bold ${(c.balance || 0) > 0 ? "text-rose-700" : (c.balance || 0) < 0 ? "text-emerald-700" : "text-slate-400"}`}>{fmt(c.balance || 0)}</td>
+                                <td className="p-3 tabular-nums text-slate-500">{fmt(c.opening_balance || 0)}</td>
+                                <td className={`p-3 tabular-nums font-bold ${(c.balance || 0) > 0 ? "text-rose-700" : (c.balance || 0) < 0 ? "text-emerald-700" : "text-slate-400"}`}>{fmt(c.balance || 0)}{(c.balance || 0) > 0 && <div className="text-[10px] font-normal text-rose-500">مستحق علينا تحصيله</div>}</td>
                                 <td className="p-3">
                                     <div className="flex justify-end gap-1.5">
+                                        {(c.balance || 0) > 0 && <Button size="sm" onClick={() => setPayDlg({ customer: c, amount: c.balance, method: "cash" })} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 h-8" data-testid={`pay-cust-${c.id}`}><HandCoins className="w-3.5 h-3.5" /> سداد</Button>}
                                         <Button size="sm" variant="outline" onClick={() => nav(`/customer-statement`)} className="text-indigo-600" title="كشف حساب" data-testid={`stmt-${c.id}`}><FileText className="w-3.5 h-3.5" /></Button>
                                         <Button size="sm" variant="outline" onClick={() => openEdit(c)} className="text-slate-700" title="تعديل" data-testid={`edit-cust-${c.id}`}><Pencil className="w-3.5 h-3.5" /></Button>
                                         <Button size="sm" variant="outline" onClick={() => del(c)} className="text-rose-600" title="حذف"><Trash2 className="w-3.5 h-3.5" /></Button>
@@ -92,7 +95,7 @@ export default function Customers() {
                                 </td>
                             </tr>
                         ))}
-                        {filtered.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-slate-400">{q ? "لا نتائج" : "لا يوجد عملاء — ابدأ بإضافة عميل جديد"}</td></tr>}
+                        {filtered.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-slate-400">{q ? "لا نتائج" : "لا يوجد عملاء — ابدأ بإضافة عميل جديد"}</td></tr>}
                     </tbody>
                 </table>
             </Card>
@@ -116,6 +119,29 @@ export default function Customers() {
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setDlg(null)}>إلغاء</Button>
                         <Button onClick={save} className="bg-slate-900 hover:bg-slate-800 text-white" data-testid="save-cust-btn">{dlg?.mode === "edit" ? "حفظ التعديلات" : "حفظ العميل"}</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            <Dialog open={!!payDlg} onOpenChange={(o) => !o && setPayDlg(null)}>
+                <DialogContent dir="rtl" className="bg-white max-w-md">
+                    <DialogHeader><DialogTitle>تحصيل دفعة — {payDlg?.customer.name}</DialogTitle></DialogHeader>
+                    {payDlg && (
+                        <div className="space-y-3">
+                            <div className="bg-rose-50 border border-rose-200 rounded p-3 text-sm"><span className="text-rose-700 font-semibold">الرصيد الحالي:</span> <span className="tabular-nums font-bold">{fmt(payDlg.customer.balance)}</span></div>
+                            <div><Label>المبلغ المستلم</Label><Input type="number" value={payDlg.amount} onChange={(e) => setPayDlg(p => ({...p, amount: e.target.value}))} data-testid="pay-amount" className="tabular-nums" autoFocus /></div>
+                            <div><Label>طريقة الدفع</Label>
+                                <select value={payDlg.method} onChange={(e) => setPayDlg(p => ({...p, method: e.target.value}))} className="w-full h-10 border border-zinc-200 rounded-md px-3 bg-white mt-1">
+                                    <option value="cash">نقدي</option><option value="card">بطاقة</option><option value="bank">بنك</option>
+                                </select></div>
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setPayDlg(null)}>إلغاء</Button>
+                        <Button onClick={async () => {
+                            try { await api.post(`/customers/${payDlg.customer.id}/payment`, { amount: +payDlg.amount, method: payDlg.method });
+                                toast.success("تمّ تسجيل التحصيل"); setPayDlg(null); load();
+                            } catch (e) { toast.error(formatApiError(e)); }
+                        }} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" data-testid="save-pay-cust"><HandCoins className="w-4 h-4" /> حفظ التحصيل</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
