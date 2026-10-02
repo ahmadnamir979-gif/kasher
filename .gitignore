@@ -91,3 +91,4 @@ desktop/dist/Misk
 POS-1.0.0-arm64.AppImage
 desktop/dist/linux-arm64-unpacked/misk-pos-desktop
 frontend/node_modules/.cache/default-development/0.pack
+frontend/node_modules/.cache/default-development/1.pack

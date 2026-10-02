@@ -1,74 +1,76 @@
 # العرّاب (Al-Arraab) — PRD
 
 ## Problem Statement
-A comprehensive Arabic POS + Accounting SaaS for supermarkets, inspired by Al-Arabi.
-Multi-tenant (Super Admin + Shop Owners/Cashiers), offline-first, with complex
-inventory, AI assistance, Excel migration, Stripe renewals, WhatsApp receipts,
-and an Electron desktop wrapper.
+Arabic POS + Accounting SaaS for supermarkets, inspired by Al-Arabi. Multi-tenant
+(Super Admin + Shop Owners/Cashiers), offline-first, with full accounting,
+inventory, promotions, loyalty, AI assistance, and Electron desktop wrapper.
 
 ## Users
-- Super Admin — manages shops, subscriptions.
-- Shop Owner — full access to shop data, accounting, reports.
-- Cashier / Accountant / Manager (role-based).
+Super Admin · Shop Owner · Cashier · Accountant · Manager.
 
 ## Current State (Feb 2026)
 
-### Core
-- Auth (JWT), multi-tenant shop isolation.
-- POS (offline queueing), Sales, Purchases, Customers, Suppliers, Warehouses.
-- Transfers, Barcode labels, Shifts, Expenses, Employees.
-- Products with: name, barcode, category, warehouse, **supplier**, cost/sale/**wholesale** prices,
-  stock, min_stock, unit, tax, **location**, expiry.
-- Purchases with: discount, **extra_charges**, **payment_method** (cash/card/credit), returns.
+### Dashboard
+Clickable KPI grid: Today/Yesterday sales, Today profit & invoice count,
+customers count, debts, cash-in-drawer, cash/card sales today, purchases today,
+low-stock count, near-expiry count, important alerts. 14-day sales chart,
+month-over-month comparison, Top 10 products this month, least active products.
 
-### Accounting (P0 + P1)
-- Chart of Accounts, Journal entries, Ledger, Vouchers (receipt/payment).
-- Banks & Checks, Fixed Assets, Cost Centers, Currencies.
-- VAT report, Financial reports (Trial balance, P&L), Closed periods.
-- Pricing tiers, Installments, Orders, Manufacturing formulas, Expiry alerts.
-- **Customer/Supplier statements** with running balance.
-- **Customer payment collection** + **Supplier payment** (updates balances).
-- **Balance Sheet** (assets / liabilities / equity).
-- **Cashbox** (cash + bank balance, movements).
+### POS
+- Offline-first (sync queue).
+- Barcode scan + search by name/code + quick-add unknown barcode.
+- **Scale barcode support** (EAN-13 prefix 2, 5-digit code + 5-digit grams).
+- Multiple payment methods (cash/card/credit/mixed).
+- Discounts, held invoices, returns, held/resumed carts.
+
+### Sales & Customers
+Sales list + returns, customer CRUD, **statement + payment collection**,
+debt reminders, installments, **promotions engine** (percent / fixed / BOGO
+/ bundle, with date / time / day-of-week constraints), **loyalty points**
+(earn per currency, redeem, tiers Silver/Gold/VIP), pricing tiers.
+
+### Purchases & Suppliers
+Purchases with payment_method, discount, extra_charges, returns.
+Supplier CRUD + **statement + payment to supplier**, orders.
 
 ### Inventory
-- Numbering rules, bulk price adjustments, inventory adjustments, alternatives.
-- Excel import/export + Excel Live sync (Power Query).
-- **Product movement (Kardex)** — per-product in/out log with running balance.
-- **Dead stock** report (no sales in X days).
+Products with name, barcode, category, warehouse, **supplier**,
+cost/sale/**wholesale** price, stock, min_stock, unit, tax, **location**,
+expiry. Numbering rules, bulk price edit, alternatives, adjustments,
+warehouses, transfers, **product movement (Kardex)**, **dead stock**,
+expiry alerts, barcode labels, manufacturing.
 
-### Reports (Enhanced)
-- Daily sales, Top products, Sales by cashier, Sales by category,
-  Purchases summary by supplier, Profit & Loss.
-- Dashboard KPIs.
+### Accounting
+Chart of Accounts, Journal, Ledger, Vouchers, Cashbox, Banks & Checks,
+Fixed Assets, Cost Centers, Currencies, Closed Periods.
+
+### Reports (own section)
+Reports center with tabs (daily sales, top products, by category, by cashier,
+purchases summary, P&L), Financial reports, **Balance Sheet**, VAT, Excel Live.
+
+### Admin
+Employees & permissions, Expenses, Shifts, **Audit Log** (price changes,
+promo CRUD, invoice voids, etc.).
+
+### System
+Settings, Migration from legacy systems, Backup.
 
 ### AI
-- AI Assistant chat (GPT-4o-mini via Emergent Universal Key).
-- Proactive smart insights (low cash, out of stock, returned checks).
+Chat assistant + proactive smart insights (low cash, out of stock,
+returned checks).
 
 ### Integrations
-- Stripe (subscription renewal) — pre-injected test key.
-- Emergent LLM key — AI Assistant.
-- MongoDB (local preview).
-- Electron desktop wrapper (silent printing).
-
-### UI
-- Classic Al-Arabi-style sidebar (gradient blue + gold accents).
-- RTL Arabic throughout.
-- Shadcn UI components + TailwindCSS.
+Stripe (test key injected) · Emergent Universal LLM Key · MongoDB · Electron.
 
 ## Backlog (P1 / P2)
-- Twilio WhatsApp **automated** daily alerts (playbook fetched; integration pending).
+- Twilio WhatsApp automated daily alerts (playbook fetched).
+- Multiple units per product (crate ↔ piece conversion).
+- Customer Display screen (secondary monitor).
+- ESL (Electronic Shelf Labels) integration.
+- RFID / check reader integrations.
+- Granular per-button permissions UI.
+- Price change history view on product detail.
 - MongoDB Atlas production migration.
-- Scanner archiving (الأرشفة الإلكترونية).
-- RFID / check reader integration.
-- Gas pump integration.
-- Multi-language reports (EN / HE).
-- Promotions & special pricing offers UI.
-- Dedicated near-expiry report page (data exists in `/expiry/near`).
 
 ## Test Credentials
 See `/app/memory/test_credentials.md`.
-
-## Known Issues
-- Testing agent not yet run after latest additions (reports module, new UIs).

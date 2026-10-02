@@ -2215,6 +2215,14 @@ try:
 except Exception as _e:
     logger.exception("Failed to register reports module: %s", _e)
 
+# Register Promotions, Loyalty, Audit Log and enhanced Dashboard
+try:
+    from promo_loyalty import register as _register_pl
+    _register_pl(api, db, require_shop_user)
+    logger.info("Promotions/Loyalty/Audit module registered.")
+except Exception as _e:
+    logger.exception("Failed to register promo/loyalty module: %s", _e)
+
 app.include_router(api)
 
 app.add_middleware(

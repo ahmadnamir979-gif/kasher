@@ -231,6 +231,29 @@ export default function POS() {
     const handleBarcodeEnter = (e) => {
         if (e.key === "Enter" && q.trim()) {
             const t = q.trim().toLowerCase();
+            // Scale barcode (EAN-13 starting with 2 or 02): format 2PPPPPWWWWWC
+            // Prefix 2 + 5-digit product code + 5-digit weight (grams) + 1 check digit
+            if (/^0?2\d{11}$/.test(t)) {
+                const normalized = t.length === 13 ? t : t.slice(-13);
+                const productCode = normalized.substring(1, 6);
+                const weightGrams = parseInt(normalized.substring(6, 11), 10);
+                const weightKg = weightGrams / 1000;
+                // Try match by last digits of barcode or by product code
+                const match = products.find(p => {
+                    const bc = (p.barcode || "").toLowerCase();
+                    return bc === normalized || bc.includes(productCode) || bc.endsWith(productCode);
+                });
+                if (match) {
+                    setCart(c => {
+                        const idx = c.findIndex(x => x.product_id === match.id);
+                        if (idx >= 0) { const copy = [...c]; copy[idx] = { ...copy[idx], qty: copy[idx].qty + weightKg }; return copy; }
+                        return [...c, { product_id: match.id, name: match.name, price: match.sale_price, cost: match.cost_price, qty: weightKg, discount: 0, tax_rate: match.tax_rate || 0, stock: match.stock }];
+                    });
+                    toast.success(`${match.name} — ${weightKg.toFixed(3)} ${match.unit || "كغ"}`);
+                    setQ("");
+                    return;
+                }
+            }
             const match = products.find(p => (p.barcode || "").toLowerCase() === t || p.name.toLowerCase() === t);
             if (match) { addToCart(match); setQ(""); return; }
             // Unknown barcode/name — offer quick add
