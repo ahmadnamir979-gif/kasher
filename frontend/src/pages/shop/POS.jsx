@@ -67,6 +67,7 @@ export default function POS() {
     const [q, setQ] = useState("");
     const [cart, setCart] = useState([]);
     const [discount, setDiscount] = useState(0);
+    const [autoPromos, setAutoPromos] = useState({ applied: [], total_discount: 0 });
     const [shift, setShift] = useState(null);
     const [shiftDlg, setShiftDlg] = useState(false);
     const [receiptOpen, setReceiptOpen] = useState(false);
@@ -226,7 +227,38 @@ export default function POS() {
 
     const subtotal = cart.reduce((s, i) => s + i.qty * i.price - i.discount, 0);
     const tax = cart.reduce((s, i) => s + (i.qty * i.price - i.discount) * (i.tax_rate/100), 0);
-    const total = subtotal + tax - discount;
+    const total = subtotal + tax - discount - (autoPromos.total_discount || 0);
+
+    // Auto-apply active promotions whenever cart changes (debounced)
+    useEffect(() => {
+        if (cart.length === 0) { setAutoPromos({ applied: [], total_discount: 0 }); return; }
+        const h = setTimeout(async () => {
+            try {
+                const items = cart.map(i => ({
+                    product_id: i.product_id, qty: i.qty, price: i.price,
+                    category_id: products.find(p => p.id === i.product_id)?.category_id || null
+                }));
+                const { data } = await api.post("/promotions/apply", { items, subtotal });
+                setAutoPromos(data || { applied: [], total_discount: 0 });
+            } catch { /* ignore if offline */ }
+        }, 300);
+        return () => clearTimeout(h);
+    }, [cart, subtotal, products]);
+
+    // Broadcast cart to Customer Display window
+    useEffect(() => {
+        try {
+            const bc = new BroadcastChannel("al-arraab-pos");
+            bc.postMessage({ type: "cart", cart, subtotal, tax, discount, promo_discount: autoPromos.total_discount || 0, applied: autoPromos.applied, total, shop: user?.shop?.name || "" });
+            return () => bc.close();
+        } catch {}
+    }, [cart, subtotal, tax, discount, autoPromos, total, user]);
+
+    const openCustomerDisplay = () => {
+        const w = window.open("/customer-display", "cust_disp", "width=1024,height=768,toolbar=no,menubar=no");
+        if (w) toast.success("فُتحت شاشة العميل");
+        else toast.error("المتصفح رفض فتح النافذة — فعّل النوافذ المنبثقة");
+    };
 
     const handleBarcodeEnter = (e) => {
         if (e.key === "Enter" && q.trim()) {
@@ -289,7 +321,7 @@ export default function POS() {
         if (cart.length === 0) return toast.error("السلة فارغة");
         if (!shift) { toast.error("يرجى فتح وردية أولاً"); setShiftDlg(true); return; }
         const payload = {
-            items: cart, discount, paid: opts.paid ?? total, payment_method: method,
+            items: cart, discount: discount + (autoPromos.total_discount || 0), paid: opts.paid ?? total, payment_method: method,
             customer_id: opts.customer_id || null,
             customer_name: opts.customer_name || "زبون نقدي",
             warehouse_id: warehouseId, is_return: false,
@@ -468,6 +500,10 @@ export default function POS() {
                     {held.length > 0 && <span className="bg-white text-fuchsia-700 text-xs font-bold rounded-full min-w-5 h-5 px-1.5 grid place-items-center">{held.length}</span>}
                 </button>
                 <TopBtn icon={RefreshCw} label="تحديث" color="emerald" onClick={refresh} testid="pos-refresh-btn" />
+                <button onClick={openCustomerDisplay} data-testid="open-customer-display-btn"
+                    className="h-11 px-3 rounded-md bg-cyan-500 hover:bg-cyan-600 text-white text-sm font-semibold flex items-center gap-2 transition-colors shadow-sm">
+                    <ReceiptText className="w-4 h-4" /> شاشة الزبون
+                </button>
                 <div className="text-white text-xs bg-slate-950/40 rounded px-3 py-1.5 border border-slate-700 tabular-nums">
                     <div className="text-slate-400 text-[10px]">{now.toLocaleDateString("en-GB")}</div>
                     <div className="font-bold">{now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</div>
@@ -572,6 +608,16 @@ export default function POS() {
                                 <Input type="number" value={discount} onChange={(e) => setDiscount(+e.target.value || 0)}
                                     data-testid="discount-input" className="h-8 text-right tabular-nums bg-white" />
                             </div>
+                            {autoPromos.total_discount > 0 && (
+                                <div className="col-span-2 bg-emerald-50 border border-emerald-200 rounded px-2 py-1.5 flex items-center justify-between text-xs" data-testid="auto-promo-banner">
+                                    <div className="flex items-center gap-1.5 text-emerald-800">
+                                        <Gift className="w-3.5 h-3.5" />
+                                        <span className="font-semibold">عروض تلقائية ({autoPromos.applied.length})</span>
+                                        <span className="text-emerald-600 truncate max-w-[220px]">{autoPromos.applied.map(a => a.name).join(" · ")}</span>
+                                    </div>
+                                    <div className="tabular-nums font-bold text-emerald-700">-{fmt(autoPromos.total_discount)}</div>
+                                </div>
+                            )}
                             <div>
                                 <div className="text-[10px] text-slate-600 mb-1">المجموع</div>
                                 <div className="h-8 rounded border border-zinc-300 bg-white px-2 text-sm font-semibold tabular-nums flex items-center justify-end">{fmt(subtotal + tax)}</div>

@@ -19,6 +19,7 @@ import Migration from "@/pages/shop/Migration";
 import Reminders from "@/pages/shop/Reminders";
 import Settings from "@/pages/shop/Settings";
 import AuditLog from "@/pages/shop/AuditLog";
+import CustomerDisplay from "@/pages/shop/CustomerDisplay";
 import { RenewSuccess, RenewCancel } from "@/pages/shop/Renew";
 import ChartOfAccounts from "@/pages/shop/accounting/ChartOfAccounts";
 import Journal from "@/pages/shop/accounting/Journal";
@@ -176,6 +177,7 @@ function Sidebar() {
 export default function ShopApp() {
     const { pathname } = useLocation();
     if (pathname === "/pos") return <POS />;
+    if (pathname === "/customer-display") return <CustomerDisplay />;
     if (pathname === "/renew/success") return <RenewSuccess />;
     if (pathname === "/renew/cancel") return <RenewCancel />;
     const item = ALL_ITEMS.find(n => n.to === pathname);
