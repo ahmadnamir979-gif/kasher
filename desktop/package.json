@@ -1,9 +1,9 @@
 {
-  "name": "misk-pos-desktop",
+  "name": "al-arraab-desktop",
   "version": "1.0.0",
-  "description": "Misk POS — Desktop app for supermarket cashier",
+  "description": "العرّاب — Desktop app for supermarket cashier & accounting",
   "main": "main.js",
-  "author": "Misk POS",
+  "author": "Al-Arraab",
   "license": "UNLICENSED",
   "private": true,
   "scripts": {
@@ -23,9 +23,9 @@
     "electron-builder": "^25.0.5"
   },
   "build": {
-    "appId": "com.misk.pos",
-    "productName": "Misk POS",
-    "copyright": "Copyright © 2026 Misk POS",
+    "appId": "com.alarraab.pos",
+    "productName": "Al-Arraab",
+    "copyright": "Copyright © 2026 Al-Arraab",
     "asar": true,
     "files": [
       "main.js",
@@ -51,7 +51,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Misk POS",
+      "shortcutName": "Al-Arraab",
       "runAfterFinish": true,
       "installerLanguages": ["ar", "en"]
     },

@@ -23,6 +23,7 @@ from emergentintegrations.payments.stripe.checkout import (
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 import json as _json
 import csv as _csv
+import zipfile as _zipfile
 
 # ---------- Setup ----------
 mongo_url = os.environ['MONGO_URL']
@@ -104,13 +105,17 @@ class ProductIn(BaseModel):
     barcode: Optional[str] = ""
     category_id: Optional[str] = None
     warehouse_id: Optional[str] = None
+    supplier_id: Optional[str] = None
     cost_price: float = 0
     sale_price: float = 0
+    wholesale_price: float = 0
     stock: float = 0
     min_stock: float = 0
     unit: str = "قطعة"
     tax_rate: float = 0
     is_active: bool = True
+    expiry_date: Optional[str] = None
+    location: Optional[str] = ""
 
 class WarehouseIn(BaseModel):
     name: str
@@ -144,12 +149,39 @@ class CustomerPatch(BaseModel):
     email: Optional[str] = None
     address: Optional[str] = None
 
+class SupplierPatch(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+
 class EmployeeIn(BaseModel):
     email: EmailStr
     name: str
     password: str
     role: Literal["cashier", "accountant", "manager"] = "cashier"
+    phone: Optional[str] = ""
+    position: Optional[str] = ""
+    hire_date: Optional[str] = None  # YYYY-MM-DD
+    salary_type: Literal["monthly", "daily", "hourly"] = "monthly"
+    salary_amount: float = 0
     is_active: bool = True
+
+class EmployeePatch(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    position: Optional[str] = None
+    hire_date: Optional[str] = None
+    salary_type: Optional[Literal["monthly", "daily", "hourly"]] = None
+    salary_amount: Optional[float] = None
+    role: Optional[Literal["cashier", "accountant", "manager"]] = None
+    is_active: Optional[bool] = None
+    password: Optional[str] = None
+
+class LoanIn(BaseModel):
+    amount: float
+    reason: Optional[str] = ""
+    date: Optional[str] = None  # YYYY-MM-DD
 
 class InvoiceItem(BaseModel):
     product_id: str
@@ -178,14 +210,23 @@ class PurchaseIn(BaseModel):
     warehouse_id: Optional[str] = None
     items: List[InvoiceItem]
     discount: float = 0
+    extra_charges: float = 0
     paid: float = 0
+    payment_method: Literal["cash", "card", "credit"] = "cash"
     notes: Optional[str] = ""
     is_return: bool = False
+
+class PaymentIn(BaseModel):
+    amount: float
+    method: Literal["cash", "card", "bank"] = "cash"
+    notes: Optional[str] = ""
+    date: Optional[str] = None  # YYYY-MM-DD
 
 class ExpenseIn(BaseModel):
     category: str
     amount: float
     notes: Optional[str] = ""
+    date: Optional[str] = None  # YYYY-MM-DD
 
 class ShiftAction(BaseModel):
     opening_cash: float = 0
@@ -340,6 +381,14 @@ async def list_shops(_=Depends(require_super_admin)):
         s["invoices_count"] = sales_agg[0]["count"] if sales_agg else 0
     return shops
 
+# ---------- Activation codes ----------
+import secrets as _secrets
+
+def _gen_activation_code() -> str:
+    """Generate a shop activation code like MSK-A9CD-K3F1 (Crockford's base32 for readability)."""
+    alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no O/0/I/1/L
+    return "MSK-" + "".join(_secrets.choice(alphabet) for _ in range(4)) + "-" + "".join(_secrets.choice(alphabet) for _ in range(4))
+
 @api.post("/admin/shops")
 async def create_shop(data: ShopCreate, _=Depends(require_super_admin)):
     email = data.owner_email.strip().lower()
@@ -347,14 +396,19 @@ async def create_shop(data: ShopCreate, _=Depends(require_super_admin)):
         raise HTTPException(400, "البريد الإلكتروني مستخدم من قبل")
     shop_id = new_id()
     exp = now_utc() + timedelta(days=30*data.subscription_months)
+    # Generate a unique activation code
+    for _try in range(5):
+        code = _gen_activation_code()
+        if not await db.shops.find_one({"activation_code": code}):
+            break
     shop_doc = {
         "id": shop_id, "name": data.name, "phone": data.phone or "",
         "address": data.address or "", "is_active": True,
         "subscription_expires_at": iso(exp),
+        "activation_code": code,
         "created_at": iso(now_utc()),
     }
     await db.shops.insert_one(shop_doc)
-    # Create default warehouse
     await db.warehouses.insert_one({
         "id": new_id(), "shop_id": shop_id, "name": "المخزن الرئيسي",
         "location": "", "is_default": True, "created_at": iso(now_utc()),
@@ -366,12 +420,56 @@ async def create_shop(data: ShopCreate, _=Depends(require_super_admin)):
         "created_at": iso(now_utc()),
     }
     await db.users.insert_one(owner_doc)
-    # Record initial subscription payment
     await db.subscription_payments.insert_one({
         "id": new_id(), "shop_id": shop_id, "months": data.subscription_months,
         "amount": 0, "created_at": iso(now_utc()),
     })
-    return {"ok": True, "shop_id": shop_id}
+    return {"ok": True, "shop_id": shop_id, "activation_code": code}
+
+@api.post("/admin/shops/{shop_id}/regenerate-code")
+async def regenerate_activation_code(shop_id: str, _=Depends(require_super_admin)):
+    if not await db.shops.find_one({"id": shop_id}):
+        raise HTTPException(404, "Shop not found")
+    for _try in range(5):
+        code = _gen_activation_code()
+        if not await db.shops.find_one({"activation_code": code}):
+            break
+    await db.shops.update_one({"id": shop_id}, {"$set": {"activation_code": code}})
+    return {"ok": True, "activation_code": code}
+
+class ActivateIn(BaseModel):
+    code: str
+    device_name: Optional[str] = ""
+
+@api.post("/activate")
+async def activate_shop(data: ActivateIn, response: Response):
+    """Public endpoint — desktop app or web activation page exchanges a code for a JWT session."""
+    code = (data.code or "").strip().upper().replace(" ", "")
+    if not code.startswith("MSK-"): raise HTTPException(400, "الكود غير صحيح")
+    shop = await db.shops.find_one({"activation_code": code}, {"_id": 0})
+    if not shop: raise HTTPException(404, "الكود غير صحيح أو منتهي الصلاحية")
+    if not shop.get("is_active"): raise HTTPException(403, "هذا المحل موقوف — تواصل مع الإدارة")
+    # Verify subscription still valid
+    exp = shop.get("subscription_expires_at")
+    if exp and datetime.fromisoformat(exp) < now_utc():
+        raise HTTPException(403, "انتهى اشتراك المحل — يرجى التجديد")
+    # Find the shop owner user
+    owner = await db.users.find_one(
+        {"shop_id": shop["id"], "role": "shop_owner"}, {"_id": 0}
+    )
+    if not owner: raise HTTPException(500, "لم يتم العثور على مالك المحل")
+    # Issue JWT token
+    token = create_access_token(owner["id"], owner["role"], owner["shop_id"])
+    response.set_cookie("token", token, httponly=True, samesite="none", secure=True, max_age=7*86400)
+    return {
+        "ok": True,
+        "token": token,
+        "user": {
+            "id": owner["id"], "email": owner["email"], "name": owner["name"],
+            "role": owner["role"], "shop_id": owner["shop_id"],
+        },
+        "shop": {"id": shop["id"], "name": shop["name"]},
+    }
 
 @api.patch("/admin/shops/{shop_id}")
 async def update_shop(shop_id: str, data: ShopUpdate, _=Depends(require_super_admin)):
@@ -493,6 +591,19 @@ async def create_product(data: ProductIn, user=Depends(require_shop_user)):
     if not payload.get("warehouse_id"):
         payload["warehouse_id"] = await _ensure_default_warehouse(sid(user))
     if not payload.get("barcode"):
+        # Try shop numbering rule first
+        try:
+            rule = await db.numbering_rules.find_one({"shop_id": sid(user)}, {"_id": 0})
+            if rule and rule.get("enabled"):
+                code = f"{rule.get('prefix', '')}{str(rule['next_number']).zfill(rule.get('pad_width', 5))}"
+                # Check uniqueness
+                exists = await db.products.find_one({"shop_id": sid(user), "barcode": code})
+                if not exists:
+                    payload["barcode"] = code
+                    await db.numbering_rules.update_one({"shop_id": sid(user)}, {"$inc": {"next_number": 1}})
+        except Exception:
+            pass
+    if not payload.get("barcode"):
         # Ensure uniqueness within shop
         for _ in range(5):
             b = _gen_barcode()
@@ -564,6 +675,108 @@ async def create_supplier(data: SupplierIn, user=Depends(require_shop_user)):
 async def delete_supplier(sid_: str, user=Depends(require_shop_user)):
     await db.suppliers.delete_one({"id": sid_, "shop_id": sid(user)})
     return {"ok": True}
+
+@api.patch("/suppliers/{sid_}")
+async def update_supplier(sid_: str, data: SupplierPatch, user=Depends(require_shop_user)):
+    upd = {k: v for k, v in data.model_dump().items() if v is not None}
+    if not upd:
+        return {"ok": True}
+    r = await db.suppliers.update_one({"id": sid_, "shop_id": sid(user)}, {"$set": upd})
+    if r.matched_count == 0:
+        raise HTTPException(404, "المورد غير موجود")
+    return {"ok": True}
+
+# ---------- Payroll Report ----------
+@api.get("/reports/payroll")
+async def payroll_report(user=Depends(require_shop_user), days: int = 30):
+    """Compute payroll per employee: salary − loans in period."""
+    emps = await db.users.find(
+        {"shop_id": sid(user), "role": {"$in": ["cashier", "accountant", "manager"]}},
+        {"_id": 0, "password_hash": 0}
+    ).sort("name", 1).to_list(1000)
+    rows = []
+    for e in emps:
+        stype = e.get("salary_type") or "monthly"
+        base = float(e.get("salary_amount") or 0)
+        # Compute gross for period
+        if stype == "monthly":
+            gross = round(base * (days / 30.0), 2)
+            unit_desc = f"{base:.2f} شهري × {days}/30 يوم"
+        elif stype == "daily":
+            gross = round(base * days, 2)
+            unit_desc = f"{base:.2f} يومي × {days} يوم"
+        else:  # hourly — assume 8h/day
+            hours = days * 8
+            gross = round(base * hours, 2)
+            unit_desc = f"{base:.2f} ساعة × {hours} ساعة"
+        # Sum of UNSETTLED loans
+        loans = await db.employee_loans.find(
+            {"shop_id": sid(user), "employee_id": e["id"],
+             "settled": {"$ne": True}},
+            {"_id": 0}
+        ).to_list(1000)
+        loans_total = round(sum(float(l.get("amount", 0)) for l in loans), 2)
+        net = round(gross - loans_total, 2)
+        rows.append({
+            "employee_id": e["id"], "name": e["name"],
+            "position": e.get("position") or "",
+            "salary_type": stype, "salary_amount": base,
+            "unit_desc": unit_desc,
+            "days": days, "gross": gross,
+            "loans_count": len(loans), "loans_total": loans_total,
+            "net": net,
+        })
+    total_gross = round(sum(r["gross"] for r in rows), 2)
+    total_loans = round(sum(r["loans_total"] for r in rows), 2)
+    total_net = round(sum(r["net"] for r in rows), 2)
+    return {"days": days, "rows": rows,
+            "totals": {"gross": total_gross, "loans": total_loans, "net": total_net}}
+
+class PayrollPayIn(BaseModel):
+    employee_id: str
+    gross: float
+    loans_total: float = 0
+    net: float
+    period_days: int = 30
+    notes: Optional[str] = ""
+
+@api.post("/payroll/pay")
+async def pay_payroll(data: PayrollPayIn, user=Depends(require_shop_user)):
+    """تثبيت صرف الراتب: تسوية السلف + تسجيل مصروف + سجل محاسبي."""
+    emp = await db.users.find_one({"id": data.employee_id, "shop_id": sid(user)})
+    if not emp:
+        raise HTTPException(404, "الموظف غير موجود")
+    today = now_utc().date().isoformat()
+    # 1) Mark unsettled loans as settled
+    await db.employee_loans.update_many(
+        {"shop_id": sid(user), "employee_id": data.employee_id, "settled": {"$ne": True}},
+        {"$set": {"settled": True, "settled_at": iso(now_utc())}}
+    )
+    # 2) Create a payroll_payment record
+    doc = {
+        "id": new_id(), "shop_id": sid(user),
+        "employee_id": data.employee_id, "employee_name": emp.get("name", ""),
+        "gross": data.gross, "loans_total": data.loans_total, "net": data.net,
+        "period_days": data.period_days, "notes": data.notes or "",
+        "paid_by": user["id"], "date": today,
+        "created_at": iso(now_utc()),
+    }
+    await db.payroll_payments.insert_one(doc)
+    # 3) Register as an expense (so it affects cashbox + P&L)
+    await db.expenses.insert_one({
+        "id": new_id(), "shop_id": sid(user),
+        "category": f"راتب — {emp.get('name', '')}",
+        "amount": data.net, "notes": f"صرف راتب ({data.period_days} يوم) — صافي بعد السلف",
+        "user_id": user["id"], "created_at": iso(now_utc()),
+    })
+    doc.pop("_id", None)
+    return doc
+
+@api.get("/payroll/payments")
+async def list_payroll_payments(user=Depends(require_shop_user), limit: int = 100):
+    return await db.payroll_payments.find(
+        {"shop_id": sid(user)}, {"_id": 0}
+    ).sort("created_at", -1).to_list(limit)
 
 # ---------- Debt Reminders ----------
 def _default_reminder_msg(shop_name: str, customer_name: str, amount: float) -> str:
@@ -649,6 +862,120 @@ async def delete_reminder(rid: str, user=Depends(require_shop_user)):
     await db.debt_reminders.delete_one({"id": rid, "shop_id": sid(user)})
     return {"ok": True}
 
+# ---------- Backup / Restore (per shop) ----------
+# Collections that belong to a shop (never include users/shops/counters/global tables).
+BACKUP_COLLECTIONS = [
+    "categories", "products", "warehouses", "transfers",
+    "customers", "suppliers", "sales", "purchases",
+    "expenses", "shifts", "held_invoices", "debt_reminders",
+    "migration_templates", "migration_batches",
+]
+
+def _default_json(o):
+    from datetime import datetime as _dt
+    if isinstance(o, _dt): return o.isoformat()
+    return str(o)
+
+@api.get("/backup/export")
+async def backup_export(user=Depends(require_shop_user)):
+    shop_id = sid(user)
+    shop = await db.shops.find_one({"id": shop_id}, {"_id": 0}) or {"id": shop_id}
+    buf = io.BytesIO()
+    with _zipfile.ZipFile(buf, "w", _zipfile.ZIP_DEFLATED) as zf:
+        manifest = {
+            "shop_id": shop_id,
+            "shop_name": shop.get("name", ""),
+            "exported_at": iso(now_utc()),
+            "exported_by": user.get("email"),
+            "version": 1,
+            "collections": BACKUP_COLLECTIONS,
+        }
+        zf.writestr("manifest.json", _json.dumps(manifest, ensure_ascii=False, indent=2))
+        zf.writestr("shop.json", _json.dumps(shop, ensure_ascii=False, indent=2, default=_default_json))
+        totals = {}
+        for coll in BACKUP_COLLECTIONS:
+            docs = await db[coll].find({"shop_id": shop_id}, {"_id": 0}).to_list(1000000)
+            totals[coll] = len(docs)
+            zf.writestr(f"{coll}.json", _json.dumps(docs, ensure_ascii=False, indent=2, default=_default_json))
+        zf.writestr("totals.json", _json.dumps(totals, ensure_ascii=False, indent=2))
+    data = buf.getvalue()
+    from urllib.parse import quote as _q
+    raw_name = (shop.get("name") or "shop")
+    safe_ascii = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in raw_name.encode("ascii", "ignore").decode() or "shop")
+    stamp = now_utc().strftime("%Y%m%d-%H%M")
+    ascii_fn = f"backup-{safe_ascii or 'shop'}-{stamp}.zip"
+    utf8_fn = f"backup-{raw_name}-{stamp}.zip"
+    disp = f"attachment; filename=\"{ascii_fn}\"; filename*=UTF-8''{_q(utf8_fn)}"
+    return Response(
+        content=data, media_type="application/zip",
+        headers={"Content-Disposition": disp},
+    )
+
+@api.get("/backup/summary")
+async def backup_summary(user=Depends(require_shop_user)):
+    shop_id = sid(user)
+    out = {}
+    for coll in BACKUP_COLLECTIONS:
+        out[coll] = await db[coll].count_documents({"shop_id": shop_id})
+    return {"shop_id": shop_id, "totals": out, "total": sum(out.values())}
+
+@api.post("/backup/restore")
+async def backup_restore(
+    mode: str = "merge",  # "merge" (upsert by id) or "replace" (wipe shop data then insert)
+    file: UploadFile = File(...),
+    user=Depends(require_shop_user),
+):
+    shop_id = sid(user)
+    if mode not in ("merge", "replace"):
+        raise HTTPException(400, "mode must be merge or replace")
+    contents = await file.read()
+    try:
+        zf = _zipfile.ZipFile(io.BytesIO(contents))
+    except _zipfile.BadZipFile:
+        raise HTTPException(400, "الملف ليس ZIP صحيحاً")
+
+    # Verify manifest
+    try:
+        manifest = _json.loads(zf.read("manifest.json").decode("utf-8"))
+    except Exception:
+        raise HTTPException(400, "لا يمكن قراءة manifest.json — الملف ليس نسخة احتياطية صالحة")
+
+    if not manifest.get("collections"):
+        raise HTTPException(400, "manifest غير صالح")
+
+    stats = {"restored": {}, "errors": []}
+    for coll in BACKUP_COLLECTIONS:
+        member = f"{coll}.json"
+        if member not in zf.namelist():
+            continue
+        try:
+            docs = _json.loads(zf.read(member).decode("utf-8"))
+        except Exception as e:
+            stats["errors"].append(f"{coll}: {e}")
+            continue
+
+        if mode == "replace":
+            await db[coll].delete_many({"shop_id": shop_id})
+        count = 0
+        for d in docs:
+            # Force the shop_id to the current user's shop — even if the backup came
+            # from a different shop, prevent cross-tenant contamination.
+            d["shop_id"] = shop_id
+            if not d.get("id"):
+                d["id"] = new_id()
+            await db[coll].update_one(
+                {"id": d["id"], "shop_id": shop_id},
+                {"$set": d},
+                upsert=True,
+            )
+            count += 1
+        stats["restored"][coll] = count
+    stats["mode"] = mode
+    stats["shop_id"] = shop_id
+    stats["source_shop_name"] = manifest.get("shop_name")
+    stats["source_exported_at"] = manifest.get("exported_at")
+    return stats
+
 # ---------- Cron: promote pending reminders to 'due' ----------
 def _verify_cron_auth(request: Request):
     secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
@@ -686,6 +1013,9 @@ async def create_employee(data: EmployeeIn, user=Depends(require_shop_user)):
         "id": new_id(), "email": email, "name": data.name,
         "password_hash": hash_password(data.password),
         "role": data.role, "shop_id": sid(user), "is_active": data.is_active,
+        "phone": data.phone or "", "position": data.position or "",
+        "hire_date": data.hire_date, "salary_type": data.salary_type,
+        "salary_amount": float(data.salary_amount or 0),
         "created_at": iso(now_utc()),
     }
     await db.users.insert_one(doc)
@@ -693,9 +1023,57 @@ async def create_employee(data: EmployeeIn, user=Depends(require_shop_user)):
     doc.pop("_id", None)
     return doc
 
+@api.patch("/employees/{eid}")
+async def update_employee(eid: str, data: EmployeePatch, user=Depends(require_shop_user)):
+    patch = {k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None}
+    if "password" in patch and patch["password"]:
+        patch["password_hash"] = hash_password(patch.pop("password"))
+    else:
+        patch.pop("password", None)
+    r = await db.users.update_one(
+        {"id": eid, "shop_id": sid(user), "role": {"$in": ["cashier", "accountant", "manager"]}},
+        {"$set": patch}
+    )
+    if not r.matched_count:
+        raise HTTPException(404, "الموظف غير موجود")
+    emp = await db.users.find_one({"id": eid}, {"_id": 0, "password_hash": 0})
+    return emp
+
 @api.delete("/employees/{eid}")
 async def delete_employee(eid: str, user=Depends(require_shop_user)):
     await db.users.delete_one({"id": eid, "shop_id": sid(user)})
+    await db.employee_loans.delete_many({"employee_id": eid, "shop_id": sid(user)})
+    return {"ok": True}
+
+# ---------- Employee Loans (سلف الموظفين) ----------
+@api.get("/employees/{eid}/loans")
+async def list_loans(eid: str, user=Depends(require_shop_user)):
+    rows = await db.employee_loans.find(
+        {"employee_id": eid, "shop_id": sid(user)}, {"_id": 0}
+    ).sort("date", -1).to_list(1000)
+    total = round(sum(float(r.get("amount", 0)) for r in rows), 2)
+    return {"rows": rows, "total": total}
+
+@api.post("/employees/{eid}/loans")
+async def add_loan(eid: str, data: LoanIn, user=Depends(require_shop_user)):
+    emp = await db.users.find_one({"id": eid, "shop_id": sid(user)})
+    if not emp:
+        raise HTTPException(404, "الموظف غير موجود")
+    doc = {
+        "id": new_id(), "shop_id": sid(user), "employee_id": eid,
+        "employee_name": emp.get("name", ""),
+        "amount": float(data.amount or 0),
+        "reason": data.reason or "",
+        "date": data.date or now_utc().date().isoformat(),
+        "created_at": iso(now_utc()),
+    }
+    await db.employee_loans.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@api.delete("/employees/{eid}/loans/{lid}")
+async def delete_loan(eid: str, lid: str, user=Depends(require_shop_user)):
+    await db.employee_loans.delete_one({"id": lid, "employee_id": eid, "shop_id": sid(user)})
     return {"ok": True}
 
 # ---------- Sales ----------
@@ -745,6 +1123,64 @@ async def create_sale(data: SaleIn, user=Depends(require_shop_user)):
             {"id": data.customer_id, "shop_id": sid(user)},
             {"$inc": {"balance": (total - data.paid) * (-1 if data.is_return else 1)}}
         )
+    # Auto-post journal entry for the sale
+    try:
+        from accounting_module import ensure_default_coa, post_journal, get_system_account
+        await ensure_default_coa(db, sid(user))
+        cash_acc = await get_system_account(db, sid(user), "is_cash")
+        recv_acc = await get_system_account(db, sid(user), "is_receivable")
+        rev_acc = await get_system_account(db, sid(user), "is_sales_revenue")
+        ret_acc = await get_system_account(db, sid(user), "is_sales_returns")
+        vat_acc = await get_system_account(db, sid(user), "is_vat_payable")
+        cogs_acc = await get_system_account(db, sid(user), "is_cogs")
+        inv_acc = await get_system_account(db, sid(user), "is_inventory")
+        sign = -1 if data.is_return else 1
+        # Determine debit side (cash or receivable)
+        pay_acc = cash_acc if data.payment_method in ("cash", "card") else recv_acc
+        rev_target = ret_acc if data.is_return else rev_acc
+        base = (subtotal - data.discount) * sign
+        tax_amt = tax * sign
+        lines = []
+        if data.is_return:
+            # Reverse: credit cash, debit sales returns, debit VAT
+            lines.append({"account_id": pay_acc["id"], "account_name": pay_acc["name"], "debit": 0, "credit": abs(total) * -sign})
+            lines.append({"account_id": rev_target["id"], "account_name": rev_target["name"], "debit": abs(base), "credit": 0})
+            if tax_amt and vat_acc:
+                lines.append({"account_id": vat_acc["id"], "account_name": vat_acc["name"], "debit": abs(tax_amt), "credit": 0})
+        else:
+            lines.append({"account_id": pay_acc["id"], "account_name": pay_acc["name"], "debit": total, "credit": 0})
+            lines.append({"account_id": rev_target["id"], "account_name": rev_target["name"], "debit": 0, "credit": base})
+            if tax and vat_acc:
+                lines.append({"account_id": vat_acc["id"], "account_name": vat_acc["name"], "debit": 0, "credit": tax})
+        # COGS
+        if cogs_acc and inv_acc and cost_total:
+            ct = cost_total * sign
+            if data.is_return:
+                lines.append({"account_id": inv_acc["id"], "account_name": inv_acc["name"], "debit": abs(ct), "credit": 0})
+                lines.append({"account_id": cogs_acc["id"], "account_name": cogs_acc["name"], "debit": 0, "credit": abs(ct)})
+            else:
+                lines.append({"account_id": cogs_acc["id"], "account_name": cogs_acc["name"], "debit": cost_total, "credit": 0})
+                lines.append({"account_id": inv_acc["id"], "account_name": inv_acc["name"], "debit": 0, "credit": cost_total})
+        # Balance check with rounding tolerance
+        td = round(sum(l["debit"] for l in lines), 2)
+        tc = round(sum(l["credit"] for l in lines), 2)
+        if td != tc and lines:
+            diff = round(td - tc, 2)
+            if diff > 0:
+                lines[-1]["credit"] += diff
+            else:
+                lines[-1]["debit"] += -diff
+        if lines:
+            await post_journal(db, sid(user), user["id"], {
+                "date": iso(now_utc())[:10],
+                "description": f"فاتورة {'مرتجع' if data.is_return else 'مبيعات'} #{inv_no}",
+                "lines": lines,
+                "reference": f"INV-{inv_no}",
+                "source": "sale",
+                "source_id": doc["id"],
+            })
+    except Exception as _je_err:
+        logger.warning("Failed to post JE for sale: %s", _je_err)
     doc.pop("_id", None)
     return doc
 
@@ -813,6 +1249,7 @@ async def return_sale(sid_: str, user=Depends(require_shop_user)):
 @api.post("/purchases")
 async def create_purchase(data: PurchaseIn, user=Depends(require_shop_user)):
     subtotal, tax, total, _ = _compute_totals(data.items, data.discount)
+    total += float(data.extra_charges or 0)
     counter = await db.counters.find_one_and_update(
         {"shop_id": sid(user), "type": "purchase"},
         {"$inc": {"value": 1}}, upsert=True, return_document=True
@@ -823,8 +1260,10 @@ async def create_purchase(data: PurchaseIn, user=Depends(require_shop_user)):
         "supplier_id": data.supplier_id, "supplier_name": data.supplier_name or "",
         "items": [i.model_dump() for i in data.items],
         "subtotal": subtotal, "tax": tax, "discount": data.discount,
+        "extra_charges": float(data.extra_charges or 0),
         "total": total * (-1 if data.is_return else 1),
-        "paid": data.paid, "is_return": data.is_return, "notes": data.notes or "",
+        "paid": data.paid, "payment_method": data.payment_method,
+        "is_return": data.is_return, "notes": data.notes or "",
         "created_at": iso(now_utc()),
     }
     await db.purchases.insert_one(doc)
@@ -842,6 +1281,47 @@ async def create_purchase(data: PurchaseIn, user=Depends(require_shop_user)):
             {"id": data.supplier_id, "shop_id": sid(user)},
             {"$inc": {"balance": (total - data.paid) * (1 if not data.is_return else -1)}}
         )
+    # Auto-post journal entry for purchase
+    try:
+        from accounting_module import ensure_default_coa, post_journal, get_system_account
+        await ensure_default_coa(db, sid(user))
+        cash_acc = await get_system_account(db, sid(user), "is_cash")
+        pay_acc = await get_system_account(db, sid(user), "is_payable")
+        inv_acc = await get_system_account(db, sid(user), "is_inventory")
+        vat_acc = await get_system_account(db, sid(user), "is_vat_payable")
+        sign = -1 if data.is_return else 1
+        credit_side = pay_acc if (data.supplier_id and data.paid < total) else cash_acc
+        lines = []
+        if data.is_return:
+            # reverse: credit inventory, debit payable/cash
+            lines.append({"account_id": credit_side["id"], "account_name": credit_side["name"], "debit": abs(total), "credit": 0})
+            lines.append({"account_id": inv_acc["id"], "account_name": inv_acc["name"], "debit": 0, "credit": abs(subtotal - data.discount)})
+            if tax and vat_acc:
+                lines.append({"account_id": vat_acc["id"], "account_name": vat_acc["name"], "debit": 0, "credit": tax})
+        else:
+            lines.append({"account_id": inv_acc["id"], "account_name": inv_acc["name"], "debit": subtotal - data.discount, "credit": 0})
+            if tax and vat_acc:
+                lines.append({"account_id": vat_acc["id"], "account_name": vat_acc["name"], "debit": tax, "credit": 0})
+            lines.append({"account_id": credit_side["id"], "account_name": credit_side["name"], "debit": 0, "credit": total})
+        td = round(sum(l["debit"] for l in lines), 2)
+        tc = round(sum(l["credit"] for l in lines), 2)
+        if td != tc and lines:
+            diff = round(td - tc, 2)
+            if diff > 0:
+                lines[-1]["credit"] += diff
+            else:
+                lines[-1]["debit"] += -diff
+        if lines:
+            await post_journal(db, sid(user), user["id"], {
+                "date": iso(now_utc())[:10],
+                "description": f"فاتورة {'مرتجع مشتريات' if data.is_return else 'مشتريات'} #{inv_no}",
+                "lines": lines,
+                "reference": f"PO-{inv_no}",
+                "source": "purchase",
+                "source_id": doc["id"],
+            })
+    except Exception as _je_err:
+        logger.warning("Failed to post JE for purchase: %s", _je_err)
     doc.pop("_id", None)
     return doc
 
@@ -856,8 +1336,18 @@ async def list_expenses(user=Depends(require_shop_user)):
 
 @api.post("/expenses")
 async def create_expense(data: ExpenseIn, user=Depends(require_shop_user)):
-    doc = {"id": new_id(), "shop_id": sid(user), **data.model_dump(),
-           "user_id": user["id"], "created_at": iso(now_utc())}
+    payload = data.model_dump()
+    # Use user-chosen date (YYYY-MM-DD) by setting created_at to that date's noon UTC
+    exp_date = payload.pop("date", None)
+    created_at = iso(now_utc())
+    if exp_date:
+        try:
+            from datetime import datetime as _dt
+            created_at = _dt.fromisoformat(exp_date + "T12:00:00+00:00").isoformat()
+        except Exception:
+            pass
+    doc = {"id": new_id(), "shop_id": sid(user), **payload,
+           "user_id": user["id"], "created_at": created_at}
     await db.expenses.insert_one(doc)
     doc.pop("_id", None)
     return doc
@@ -1867,6 +2357,62 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown():
     client.close()
+
+# Register accounting/expansion module routes (P0 + P1)
+try:
+    from accounting_module import register as _register_accounting
+    _register_accounting(api, db, require_shop_user)
+    logger.info("Accounting module registered.")
+except Exception as _e:
+    logger.exception("Failed to register accounting module: %s", _e)
+
+# Register inventory extras (numbering, bulk price, adjustments, alternatives)
+try:
+    from inventory_extras import register as _register_inv
+    _register_inv(api, db, require_shop_user)
+    logger.info("Inventory extras module registered.")
+except Exception as _e:
+    logger.exception("Failed to register inventory extras: %s", _e)
+
+# Register live-data (Excel Power Query) routes
+try:
+    from live_data import register as _register_live
+    _register_live(api, db, require_shop_user)
+    logger.info("Live-data module registered.")
+except Exception as _e:
+    logger.exception("Failed to register live-data module: %s", _e)
+
+# Register AI Assistant + BI Dashboard + Excel Templates
+try:
+    from ai_bi_module import register as _register_ai
+    _register_ai(api, db, require_shop_user)
+    logger.info("AI/BI module registered.")
+except Exception as _e:
+    logger.exception("Failed to register AI/BI module: %s", _e)
+
+# Register AI Smart Insights (proactive alerts)
+try:
+    from ai_insights import register as _register_insights
+    _register_insights(api, db, require_shop_user)
+    logger.info("AI Insights module registered.")
+except Exception as _e:
+    logger.exception("Failed to register AI Insights: %s", _e)
+
+# Register Advanced Reports / Statements / Cashbox / Movements
+try:
+    from reports_module import register as _register_reports
+    _register_reports(api, db, require_shop_user)
+    logger.info("Reports module registered.")
+except Exception as _e:
+    logger.exception("Failed to register reports module: %s", _e)
+
+# Register Promotions, Loyalty, Audit Log and enhanced Dashboard
+try:
+    from promo_loyalty import register as _register_pl
+    _register_pl(api, db, require_shop_user)
+    logger.info("Promotions/Loyalty/Audit module registered.")
+except Exception as _e:
+    logger.exception("Failed to register promo/loyalty module: %s", _e)
 
 app.include_router(api)
 

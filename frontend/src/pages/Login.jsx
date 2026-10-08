@@ -3,10 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Store, ShieldCheck, LogIn } from "lucide-react";
+import { Crown, KeyRound, ArrowLeft, ShieldCheck } from "lucide-react";
 
 export default function Login() {
     const { login } = useAuth();
@@ -26,59 +24,93 @@ export default function Login() {
     };
 
     return (
-        <div className="min-h-screen grid grid-cols-1 lg:grid-cols-2 bg-white">
-            {/* Left branding */}
-            <div className="hidden lg:flex flex-col justify-between p-12 bg-slate-900 text-white relative overflow-hidden">
-                <div className="absolute inset-0 opacity-10" style={{ backgroundImage: "radial-gradient(circle at 20% 20%, #3b82f6 0, transparent 50%), radial-gradient(circle at 80% 80%, #10b981 0, transparent 50%)" }} />
-                <div className="relative">
-                    <div className="flex items-center gap-3">
-                        <div className="w-11 h-11 rounded-md bg-blue-600 grid place-items-center"><Store className="w-6 h-6" /></div>
-                        <div>
-                            <div className="font-bold text-xl">نظام إدارة المحلات</div>
-                            <div className="text-sm text-slate-300">كاشير + محاسبة + اشتراكات</div>
-                        </div>
-                    </div>
-                </div>
-                <div className="relative space-y-6">
-                    <h1 className="text-4xl font-bold leading-tight">إدارة كاملة لسوبرماركتك<br/>من واجهة واحدة</h1>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div className="p-4 rounded-md bg-white/5 border border-white/10"><div className="font-semibold mb-1">نقطة بيع سريعة</div><div className="text-slate-300">اختصارات لوحة المفاتيح وباركود</div></div>
-                        <div className="p-4 rounded-md bg-white/5 border border-white/10"><div className="font-semibold mb-1">مخزون دقيق</div><div className="text-slate-300">حدّ أدنى وأعلى وتنبيهات</div></div>
-                        <div className="p-4 rounded-md bg-white/5 border border-white/10"><div className="font-semibold mb-1">تقارير متقدمة</div><div className="text-slate-300">يومية شهرية سنوية وأرباح</div></div>
-                        <div className="p-4 rounded-md bg-white/5 border border-white/10"><div className="font-semibold mb-1">صلاحيات</div><div className="text-slate-300">كاشير محاسب مدير</div></div>
-                    </div>
-                </div>
-                <div className="relative text-xs text-slate-400">© 2026 - جميع الحقوق محفوظة</div>
+        <div dir="rtl" className="min-h-screen relative overflow-hidden bg-[#0a0a0f]">
+            {/* Ambient background */}
+            <div className="absolute inset-0 pointer-events-none">
+                <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-amber-500/10 rounded-full blur-[120px]" />
+                <div className="absolute bottom-0 right-1/4 w-[600px] h-[600px] bg-yellow-600/10 rounded-full blur-[120px]" />
+                <div className="absolute inset-0 opacity-[0.03]" style={{
+                    backgroundImage: "linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px)",
+                    backgroundSize: "50px 50px",
+                }} />
             </div>
-            {/* Right form */}
-            <div className="flex items-center justify-center p-6 sm:p-12">
-                <Card className="w-full max-w-md p-8 border-zinc-200 shadow-sm">
-                    <div className="mb-8">
-                        <div className="w-12 h-12 rounded-md bg-slate-900 text-white grid place-items-center mb-4"><LogIn className="w-6 h-6" /></div>
-                        <h2 className="text-2xl font-bold text-slate-900">تسجيل الدخول</h2>
-                        <p className="text-sm text-slate-500 mt-1">ادخل بياناتك للوصول للنظام</p>
-                    </div>
-                    <form onSubmit={submit} className="space-y-4">
-                        <div>
-                            <Label htmlFor="email" className="text-slate-700">البريد الإلكتروني</Label>
-                            <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-                                data-testid="login-email-input" className="mt-1.5" placeholder="you@example.com" />
+
+            <div className="relative min-h-screen flex items-center justify-center p-6">
+                <div className="w-full max-w-md">
+                    {/* Crest */}
+                    <div className="text-center mb-10">
+                        <div className="inline-flex items-center justify-center relative">
+                            <div className="absolute inset-0 bg-gradient-to-br from-amber-400 to-amber-600 blur-2xl opacity-40" />
+                            <div className="relative w-24 h-24 rounded-3xl bg-gradient-to-br from-amber-400 via-amber-500 to-amber-700 flex items-center justify-center shadow-2xl shadow-amber-500/30 ring-1 ring-amber-300/50">
+                                <Crown className="w-12 h-12 text-slate-900" strokeWidth={2.5} />
+                            </div>
                         </div>
-                        <div>
-                            <Label htmlFor="pwd" className="text-slate-700">كلمة المرور</Label>
-                            <Input id="pwd" type="password" required value={pwd} onChange={(e) => setPwd(e.target.value)}
-                                data-testid="login-password-input" className="mt-1.5" placeholder="••••••••" />
-                        </div>
-                        <Button type="submit" disabled={loading} data-testid="login-submit-button"
-                            className="w-full bg-slate-900 hover:bg-slate-800 text-white h-11">
-                            {loading ? "جارٍ الدخول…" : "دخول"}
-                        </Button>
-                    </form>
-                    <div className="mt-6 p-3 rounded-md bg-blue-50 border border-blue-100 text-xs text-blue-900">
-                        <div className="flex items-center gap-2 mb-1 font-semibold"><ShieldCheck className="w-4 h-4" /> حساب المشرف الرئيسي</div>
-                        <div className="tabular-nums">admin@pos.com / Admin@1234</div>
+                        <h1 className="mt-6 text-5xl font-black bg-gradient-to-b from-white via-amber-100 to-amber-300 bg-clip-text text-transparent tracking-tight" style={{ letterSpacing: "-0.02em" }}>
+                            العرّاب
+                        </h1>
+                        <p className="mt-2 text-sm text-amber-200/60 font-medium tracking-widest uppercase">Al-Arraab</p>
                     </div>
-                </Card>
+
+                    {/* Login card */}
+                    <div className="relative rounded-3xl bg-gradient-to-b from-white/[0.08] to-white/[0.02] backdrop-blur-xl border border-white/10 p-8 shadow-2xl">
+                        <div className="mb-6">
+                            <h2 className="text-xl font-bold text-white">تسجيل الدخول</h2>
+                            <p className="text-sm text-slate-400 mt-1">أدخل بياناتك للوصول إلى محلك</p>
+                        </div>
+
+                        <form onSubmit={submit} className="space-y-4">
+                            <div>
+                                <label className="text-xs font-semibold text-slate-300 mb-1.5 block">البريد الإلكتروني</label>
+                                <Input
+                                    type="email" required
+                                    value={email} onChange={(e) => setEmail(e.target.value)}
+                                    data-testid="login-email-input"
+                                    dir="ltr"
+                                    className="h-12 bg-white/5 border-white/10 text-white placeholder:text-slate-500 text-right focus:border-amber-400/50 focus:ring-amber-400/20"
+                                    placeholder="you@example.com" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-semibold text-slate-300 mb-1.5 block">كلمة المرور</label>
+                                <Input
+                                    type="password" required
+                                    value={pwd} onChange={(e) => setPwd(e.target.value)}
+                                    data-testid="login-password-input"
+                                    className="h-12 bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:border-amber-400/50 focus:ring-amber-400/20"
+                                    placeholder="••••••••" />
+                            </div>
+                            <Button type="submit" disabled={loading} data-testid="login-submit-button"
+                                className="w-full h-12 mt-2 bg-gradient-to-b from-amber-400 to-amber-600 hover:from-amber-300 hover:to-amber-500 text-slate-900 text-base font-bold shadow-lg shadow-amber-500/20 gap-2 border-0">
+                                {loading ? "جارٍ الدخول…" : "دخول"}
+                                <ArrowLeft className="w-4 h-4" />
+                            </Button>
+                        </form>
+
+                        {/* Activation code shortcut */}
+                        <div className="mt-6 pt-6 border-t border-white/10">
+                            <a href="/activate" data-testid="go-to-activate"
+                                className="flex items-center justify-between p-3.5 rounded-xl bg-gradient-to-l from-amber-500/10 to-transparent border border-amber-400/20 hover:border-amber-400/40 transition-colors group">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="w-9 h-9 rounded-lg bg-amber-500/20 grid place-items-center">
+                                        <KeyRound className="w-4 h-4 text-amber-300" />
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="text-sm font-semibold text-white">لديك كود تفعيل؟</div>
+                                        <div className="text-[11px] text-slate-400">فعّل نسخة محلك بضغطة واحدة</div>
+                                    </div>
+                                </div>
+                                <ArrowLeft className="w-4 h-4 text-amber-300 group-hover:-translate-x-1 transition-transform" />
+                            </a>
+                        </div>
+                    </div>
+
+                    {/* Trust bar */}
+                    <div className="mt-6 flex items-center justify-center gap-2 text-xs text-slate-500">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-400/70" />
+                        <span>اتصال آمن ومشفّر · بياناتك ملكك</span>
+                    </div>
+
+                    <div className="mt-3 text-center text-[11px] text-slate-600">© 2026 العرّاب · جميع الحقوق محفوظة</div>
+                </div>
             </div>
         </div>
     );

@@ -1,0 +1,29 @@
+{
+  "summary": "Iteration 8 regression — 15/15 pytest cases PASS covering new modules (promotions CRUD + apply with correct discount math, loyalty settings defaults + persistence, audit log sorted desc with user_name/action/description, enhanced /dashboard/summary with today/yesterday/month/prev_month/top10/least_active/chart_14d/alerts/cash_in_drawer/debts, customer+supplier statements w/ opening balance + credit invoices + payment reduction, product kardex movements with running balance, dead-stock, /cashbox/balance+movements, 6 advanced reports) AND regression of core existing endpoints (sales invoice_no increment + stock decrement + return + credit statement, purchases accepting new payment_method+extra_charges with total=subtotal+tax-discount+extra, products accepting new supplier_id/wholesale_price/location AND backward-compatible old-shape creation, customers/suppliers/categories/warehouses/expenses/employees, accounting routes /accounts /journal /vouchers /ledger/{id}). Login as owner@demo.com returns role=owner with shop_id.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration8_regression.py",
+    "/app/test_reports/pytest/iter8.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now 2235 lines — split sales/purchases/inventory routes into dedicated modules similar to how promo_loyalty.py and reports_module.py are already extracted.",
+    "promo_loyalty._audit swallows all exceptions silently (bare except Exception: pass) — audit failures should at least be logged for traceability.",
+    "/promotions/apply stacks all matching active promos additively; this allows unintended double-discounting (e.g., two 10% percent promos on the same cart) — consider priority / exclusivity flag.",
+    "reports_module.product_movements loads full purchases/sales/transfers/adjustments collections (to_list(5000)) per request and filters in Python — add an aggregation pipeline with $match on items.product_id and $unwind for scalability.",
+    "reports_module._cashbox_calc sums ALL historical sales regardless of date — results drift forever and don't match 'cash in drawer' intuition for shops with long history. Should at minimum be based on current shift or configurable period.",
+    "customer_statement/supplier_statement sort entries by date-string (YYYY-MM-DD) but opening balance uses `cust.get('created_at')[:10]` which may be later than historical invoice dates; opening row can end up mid-list — pin opening to sort key '0000-00-00' or explicit ordering.",
+    "LoyaltySettingsIn POST silently overwrites all fields with defaults if client omits them (full-replace semantics with no PATCH) — may lose previously-set thresholds; document or switch to PATCH.",
+    "No pagination on /audit-log, /promotions, /cashbox/movements — hard limit=200/1000/5000 is server-set but shops with heavy traffic will hit it; add offset/skip.",
+    "No role-based protection on destructive endpoints: any shop_user (incl. cashier/accountant) can DELETE promotions, pay/collect from any party, and change loyalty settings — tighten with role checks."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration8_regression.py"],
+  "success_rate": {"backend": "100%", "frontend": "N/A (skipped per request)"},
+  "test_credentials": "owner@demo.com / Demo@1234 (shop owner), admin@pos.com / Admin@1234 (super admin, not exercised in this iteration).",
+  "seed_data_creation": "Each test run creates TEST_-prefixed categories/warehouses/suppliers/customers/products/sales/purchases/promotions in the existing demo shop. No cleanup performed (acceptable — prefixed for easy future purge). No new shop was created.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "pytest.ini pins each class to a worker with --dist loadscope, so cross-class fixtures do NOT share state. Any end-to-end dependency chain MUST live inside a single class (see TestFullFlow). Promotion /apply stacks all active matching promos — deterministic tests must deactivate pre-existing active promos first. Supplier statement uses credit for purchases and debit for payments (opposite sign to customer statement).",
+  "rca of the issue": "N/A — all regression and new-endpoint tests pass."
+}

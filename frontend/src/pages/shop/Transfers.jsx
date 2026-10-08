@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Plus, Trash2, ArrowLeftRight, Printer, Package as PackageIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
+import SearchSelect from "@/components/SearchSelect";
 
 export default function Transfers() {
     const { user } = useAuth();
@@ -104,17 +105,15 @@ export default function Transfers() {
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
                                         <Label>من مخزن</Label>
-                                        <select value={form.from_warehouse_id} onChange={(e) => setForm(f => ({...f, from_warehouse_id: e.target.value, rows: []}))} className="w-full h-10 border border-zinc-200 rounded-md px-3 mt-1 bg-white" data-testid="transfer-from">
-                                            <option value="">— اختر —</option>
-                                            {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-                                        </select>
+                                        <SearchSelect value={form.from_warehouse_id} onChange={(v) => setForm(f => ({...f, from_warehouse_id: v, rows: []}))}
+                                            options={warehouses.map(w => ({ value: w.id, label: w.name, hint: w.location }))}
+                                            placeholder="اختر مخزن المصدر…" testid="transfer-from" className="mt-1" />
                                     </div>
                                     <div>
                                         <Label>إلى مخزن</Label>
-                                        <select value={form.to_warehouse_id} onChange={(e) => setForm(f => ({...f, to_warehouse_id: e.target.value}))} className="w-full h-10 border border-zinc-200 rounded-md px-3 mt-1 bg-white" data-testid="transfer-to">
-                                            <option value="">— اختر —</option>
-                                            {warehouses.filter(w => w.id !== form.from_warehouse_id).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-                                        </select>
+                                        <SearchSelect value={form.to_warehouse_id} onChange={(v) => setForm(f => ({...f, to_warehouse_id: v}))}
+                                            options={warehouses.filter(w => w.id !== form.from_warehouse_id).map(w => ({ value: w.id, label: w.name, hint: w.location }))}
+                                            placeholder="اختر مخزن الوجهة…" testid="transfer-to" className="mt-1" />
                                     </div>
                                 </div>
                                 <div className="border border-zinc-200 rounded-md">
@@ -126,11 +125,9 @@ export default function Transfers() {
                                                 return (
                                                     <tr key={i} className="border-t">
                                                         <td className="p-2">
-                                                            <select value={r.product_id} onChange={(e) => setRow(i, { product_id: e.target.value })}
-                                                                className="w-full h-9 border border-zinc-200 rounded px-2 bg-white" data-testid={`transfer-row-product-${i}`}>
-                                                                <option value="">اختر…</option>
-                                                                {sourceProducts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                                            </select>
+                                                            <SearchSelect value={r.product_id} onChange={(v) => setRow(i, { product_id: v })}
+                                                                options={sourceProducts.map(p => ({ value: p.id, label: p.name, hint: `متوفر: ${p.stock}` }))}
+                                                                placeholder="اختر الصنف…" testid={`transfer-row-product-${i}`} />
                                                         </td>
                                                         <td className="p-2"><Input type="number" value={r.qty} min="0.001" step="0.001" onChange={(e) => setRow(i, { qty: +e.target.value })} className="h-9" data-testid={`transfer-row-qty-${i}`} /></td>
                                                         <td className="p-2 tabular-nums text-slate-600">{p ? p.stock : "—"}</td>

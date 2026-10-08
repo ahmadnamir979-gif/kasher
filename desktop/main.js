@@ -1,4 +1,4 @@
-// Misk POS — Electron main process
+// العرّاب (Al-Arraab) — Electron main process
 // Handles: window creation, silent printing to configured printer, auto-update, IPC.
 const { app, BrowserWindow, ipcMain, Menu, shell, dialog } = require("electron");
 const path = require("path");
@@ -7,9 +7,9 @@ const { autoUpdater } = require("electron-updater");
 
 // -------- Persistent store (per-machine settings) --------
 const store = new Store({
-    name: "misk-pos-settings",
+    name: "al-arraab-settings",
     defaults: {
-        appUrl: process.env.MISK_APP_URL || "https://point-control-2.preview.emergentagent.com",
+        appUrl: process.env.AL_ARRAAB_URL || "https://al3rab.shop",
         printerName: "",
         paperSize: "80mm",
         autoPrint: true,
@@ -36,7 +36,7 @@ function createWindow() {
         height: 900,
         minWidth: 1024,
         minHeight: 700,
-        title: "Misk POS",
+        title: "العرّاب — Al-Arraab",
         backgroundColor: "#0f172a",
         icon: path.join(__dirname, "build", "icon.png"),
         webPreferences: {
@@ -69,8 +69,6 @@ function createWindow() {
 }
 
 // -------- Silent print IPC --------
-// Renderer calls window.desktopAPI.silentPrint({ html, deviceName, copies })
-// We create an offscreen BrowserWindow, load the HTML, and call webContents.print({ silent:true })
 ipcMain.handle("misk:list-printers", async () => {
     if (!mainWindow) return [];
     try {

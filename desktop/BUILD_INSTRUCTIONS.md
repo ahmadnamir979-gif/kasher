@@ -1,25 +1,26 @@
-# تعليمات بناء برنامج Misk POS Desktop
+# تعليمات بناء برنامج العرّاب Desktop
 
 ## ✅ الكود جاهز 100% في مجلد `/desktop`
 
 كل الملفات جاهزة:
-- `desktop/main.js` — العملية الرئيسية (Electron)
+- `desktop/main.js` — العملية الرئيسية (Electron) — يستخدم `https://al3rab.shop` افتراضياً
 - `desktop/preload.js` — الجسر الآمن بين البرنامج والواجهة
-- `desktop/package.json` — إعدادات البناء لكل المنصات
+- `desktop/package.json` — إعدادات البناء لكل المنصات + `productName: "Al-Arraab"`
+- `desktop/build/icon.png` — أيقونة تاج ذهبية (512×512)
 - `.github/workflows/build-desktop.yml` — بناء آلي عبر GitHub
 
 ## 🚀 كيف تولّد ملفات التثبيت (.exe / .dmg / .AppImage)
 
 ### الطريقة الأولى: GitHub Actions (موصى بها — تبني كل المنصات دفعة واحدة)
 
-1. **اضغط زر "Save to Github"** من أعلى واجهة Emergent (Ctrl/Cmd+S إن أمكن).
+1. **اضغط زر "Save to Github"** من أعلى واجهة Emergent.
 2. اذهب لمستودع GitHub الخاص بمشروعك → تبويب **Actions**.
 3. اختر الـ workflow **build-desktop** → **Run workflow**.
 4. انتظر ~7 دقائق حتى يكتمل البناء على Windows + macOS + Linux.
 5. حمّل الملفات من تبويب **Artifacts**:
-   - `misk-pos-windows-latest.zip` → داخلها `Misk POS Setup 1.0.0.exe` (installer) و `Misk POS 1.0.0.exe` (portable).
-   - `misk-pos-macos-latest.zip` → داخلها `Misk POS-1.0.0.dmg`.
-   - `misk-pos-ubuntu-latest.zip` → داخلها `Misk POS-1.0.0.AppImage` و `misk-pos_1.0.0_amd64.deb`.
+   - `misk-pos-windows-latest.zip` → داخلها `Al-Arraab Setup 1.0.0.exe` (installer) و `Al-Arraab 1.0.0.exe` (portable).
+   - `misk-pos-macos-latest.zip` → داخلها `Al-Arraab-1.0.0.dmg`.
+   - `misk-pos-ubuntu-latest.zip` → داخلها `Al-Arraab-1.0.0.AppImage` و `al-arraab-desktop_1.0.0_amd64.deb`.
 
 ### الطريقة الثانية: بناء محلي على جهازك
 
@@ -35,21 +36,15 @@ npm run dist:linux     # على Linux (يولّد .AppImage و .deb)
 ## 📦 كيف يعمل البرنامج
 
 عند تشغيل البرنامج على جهاز الكاشير:
+1. يفتح تلقائياً `https://al3rab.shop` (أو صفحة `/activate`)
+2. صاحب المحل يدخل كود التفعيل `MSK-XXXX-XXXX`
+3. البرنامج يقفل نفسه على المحل — طباعة صامتة + auto-launch عند التشغيل
+4. تحديث تلقائي عن بُعد لكل نسخ المحلات عند إصدار Tag جديد
 
-1. **الاكتشاف التلقائي**: البرنامج يعلن نفسه للواجهة عبر `window.desktopAPI.isDesktop = true`.
-2. **صفحة الإعدادات**: تُظهر قائمة الطابعات الفعلية المركّبة على النظام (Windows / macOS / Linux) — الكاشير يختار الطابعة بضغطة واحدة.
-3. **الطباعة الصامتة**: عند حفظ فاتورة، البرنامج يستدعي `webContents.print({ silent: true, deviceName })` — الإيصال يخرج فوراً من الطابعة المُختارة دون أي نافذة.
-4. **Auto-launch**: مفعّل افتراضياً — البرنامج يفتح مع تشغيل الحاسوب.
-5. **تحديث تلقائي**: عند إصدار Tag جديد على GitHub (`git tag v1.0.1 && git push --tags`) كل نسخ المحلات تتحدّث في الخلفية عبر `electron-updater`.
+## 🔧 تخصيص URL لكل محل (اختياري)
 
-## 🔧 تخصيص الشعار
-
-استبدل `desktop/build/icon.png` بشعار المحل بحجم **512×512 PNG**.
-
-## 🔐 التوقيع الرقمي (اختياري لكن موصى به)
-
-للتوقيع بشهادة رسمية:
-- **Windows**: أضف شهادة .pfx وضع بيانات الاعتماد في GitHub Secrets: `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`.
-- **macOS**: تحتاج Apple Developer ID وشهادة "Developer ID Application" — أضف `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` كـ GitHub Secrets.
-
-بدون توقيع، البرنامج يعمل لكن نظام التشغيل قد يظهر تحذيراً في أول تشغيل.
+إذا أردت أن يتصل البرنامج بدومين مختلف (staging مثلاً):
+```bash
+AL_ARRAAB_URL=https://staging.al3rab.shop ./Al-Arraab
+```
+أو من الإعدادات داخل البرنامج (`electron-store` يحفظ التغيير للأبد).
