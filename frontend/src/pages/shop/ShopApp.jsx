@@ -20,6 +20,7 @@ import Reminders from "@/pages/shop/Reminders";
 import Settings from "@/pages/shop/Settings";
 import AuditLog from "@/pages/shop/AuditLog";
 import Payroll from "@/pages/shop/Payroll";
+import DailyCollections from "@/pages/shop/DailyCollections";
 import CustomerDisplay from "@/pages/shop/CustomerDisplay";
 import { RenewSuccess, RenewCancel } from "@/pages/shop/Renew";
 import ChartOfAccounts from "@/pages/shop/accounting/ChartOfAccounts";
@@ -122,6 +123,7 @@ const SECTIONS = [
         key: "reports", title: "التقارير", icon: BarChart3, color: "from-rose-500/30 to-rose-500/5",
         items: [
             { to: "/reports", icon: BarChart3, label: "مركز التقارير" },
+            { to: "/daily-collections", icon: HandCoins, label: "تقرير القبض/الدفع اليومي" },
             { to: "/financial-reports", icon: PieChart, label: "التقارير المالية" },
             { to: "/balance-sheet", icon: Scale, label: "الميزانية العمومية" },
             { to: "/vat", icon: Percent, label: "كشف الضريبة (VAT)" },
@@ -233,6 +235,7 @@ export default function ShopApp() {
                 <Route path="shifts" element={<Shifts />} />
                 <Route path="audit-log" element={<AuditLog />} />
                 <Route path="reports" element={<Reports />} />
+                <Route path="daily-collections" element={<DailyCollections />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>

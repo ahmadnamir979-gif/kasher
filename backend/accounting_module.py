@@ -1094,7 +1094,15 @@ def register(api, db, require_shop_user):
 
     @api.post("/installments")
     async def create_installment(data: InstallmentIn, user=Depends(require_shop_user)):
+        # Validate customer exists & load name from DB (don't trust client-supplied name)
+        if not data.customer_id:
+            raise HTTPException(400, "يجب اختيار العميل")
+        cust = await db.customers.find_one({"id": data.customer_id, "shop_id": _sid(user)})
+        if not cust:
+            raise HTTPException(404, "العميل غير موجود")
         remaining = data.total_amount - data.down_payment
+        if remaining <= 0:
+            raise HTTPException(400, "المبلغ المتبقي يجب أن يكون أكبر من صفر")
         per_installment = round(remaining / max(1, data.installments_count), 2)
         due_date = datetime.strptime(data.first_due_date, "%Y-%m-%d")
         step_days = 30 if data.frequency == "monthly" else 7
@@ -1112,7 +1120,8 @@ def register(api, db, require_shop_user):
             "id": _new_id(),
             "shop_id": _sid(user),
             "customer_id": data.customer_id,
-            "customer_name": data.customer_name,
+            "customer_name": cust.get("name", ""),
+            "customer_phone": cust.get("phone", ""),
             "total_amount": data.total_amount,
             "down_payment": data.down_payment,
             "installments_count": data.installments_count,
@@ -1124,6 +1133,32 @@ def register(api, db, require_shop_user):
             "created_at": _now_iso(),
         }
         await db.installment_plans.insert_one(doc)
+        # Sync: increase customer balance by remaining (customer owes us this amount in installments)
+        await db.customers.update_one(
+            {"id": data.customer_id, "shop_id": _sid(user)},
+            {"$inc": {"balance": remaining}}
+        )
+        # Auto-create a debt reminder scheduled for the first due date so the plan shows in Debt Reminders too
+        try:
+            shop = await db.shops.find_one({"id": _sid(user)}) or {}
+            msg = (f"مرحباً {cust.get('name', '')}،\n"
+                   f"تذكير من *{shop.get('name', 'المحل')}* بأن أول قسط من خطة التقسيط ({data.installments_count} أقساط) "
+                   f"بقيمة *{per_installment:.2f}* شيكل مستحق بتاريخ {data.first_due_date}.\nشكراً لتفهمكم 🌟")
+            today = datetime.now(timezone.utc).date().isoformat()
+            await db.debt_reminders.insert_one({
+                "id": _new_id(), "shop_id": _sid(user),
+                "customer_id": data.customer_id,
+                "customer_name": cust.get("name", ""),
+                "customer_phone": cust.get("phone", ""),
+                "amount": float(per_installment),
+                "scheduled_date": data.first_due_date,
+                "message": msg, "repeat": "none",
+                "status": "due" if data.first_due_date <= today else "pending",
+                "created_at": _now_iso(), "sent_at": None,
+                "source": "installment", "installment_plan_id": doc["id"],
+            })
+        except Exception:
+            pass
         return {**doc, "_id": None}
 
     @api.post("/installments/{plan_id}/pay")
@@ -1154,6 +1189,20 @@ def register(api, db, require_shop_user):
 
     @api.delete("/installments/{plan_id}")
     async def delete_installment(plan_id: str, user=Depends(require_shop_user)):
+        plan = await db.installment_plans.find_one({"id": plan_id, "shop_id": _sid(user)})
+        if plan:
+            # Reverse customer balance by remaining unpaid amount only
+            paid_total = sum(float(r.get("paid", 0) or 0) for r in plan.get("schedule", []))
+            unpaid = (plan.get("total_amount", 0) - plan.get("down_payment", 0)) - paid_total
+            if plan.get("customer_id") and unpaid > 0:
+                await db.customers.update_one(
+                    {"id": plan["customer_id"], "shop_id": _sid(user)},
+                    {"$inc": {"balance": -unpaid}}
+                )
+            # Clean up linked debt reminders
+            await db.debt_reminders.delete_many(
+                {"shop_id": _sid(user), "installment_plan_id": plan_id}
+            )
         await db.installment_plans.delete_one({"id": plan_id, "shop_id": _sid(user)})
         return {"ok": True}
 

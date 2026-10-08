@@ -84,7 +84,11 @@ export default function Customers() {
                                 <td className="p-3 tabular-nums text-slate-700">{c.phone || "—"}</td>
                                 <td className="p-3 text-slate-600 text-xs">{c.address || "—"}</td>
                                 <td className="p-3 tabular-nums text-slate-500">{fmt(c.opening_balance || 0)}</td>
-                                <td className={`p-3 tabular-nums font-bold ${(c.balance || 0) > 0 ? "text-rose-700" : (c.balance || 0) < 0 ? "text-emerald-700" : "text-slate-400"}`}>{fmt(c.balance || 0)}{(c.balance || 0) > 0 && <div className="text-[10px] font-normal text-rose-500">مستحق علينا تحصيله</div>}</td>
+                                <td className={`p-3 tabular-nums font-bold ${(c.balance || 0) > 0 ? "text-rose-700" : (c.balance || 0) < 0 ? "text-emerald-700" : "text-slate-400"}`}>
+                                    {fmt(Math.abs(c.balance || 0))}
+                                    {(c.balance || 0) > 0 && <div className="text-[10px] font-normal text-rose-500">مدين — له علينا تحصيله</div>}
+                                    {(c.balance || 0) < 0 && <div className="text-[10px] font-normal text-emerald-600">دائن — رصيد مُقدَّم للعميل</div>}
+                                </td>
                                 <td className="p-3">
                                     <div className="flex justify-end gap-1.5">
                                         {(c.balance || 0) > 0 && <Button size="sm" onClick={() => setPayDlg({ customer: c, amount: c.balance, method: "cash" })} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 h-8" data-testid={`pay-cust-${c.id}`}><HandCoins className="w-3.5 h-3.5" /> سداد</Button>}
@@ -112,7 +116,7 @@ export default function Customers() {
                             </div>
                             <div><Label>العنوان</Label><Input value={dlg.form.address} onChange={(e) => setDlg(d => ({...d, form: {...d.form, address: e.target.value}}))} data-testid="cust-address" placeholder="المدينة، الحي، الشارع..." /></div>
                             {dlg.mode === "add" && (
-                                <div><Label>الرصيد الابتدائي (الدين)</Label><Input type="number" value={dlg.form.opening_balance} onChange={(e) => setDlg(d => ({...d, form: {...d.form, opening_balance: e.target.value}}))} data-testid="cust-opening" className="tabular-nums" /><p className="text-[11px] text-slate-500 mt-1">0 إذا لا يوجد دين عليه بعد.</p></div>
+                                <div><Label>الرصيد الافتتاحي (دين على العميل)</Label><Input type="number" value={dlg.form.opening_balance} onChange={(e) => setDlg(d => ({...d, form: {...d.form, opening_balance: e.target.value}}))} data-testid="cust-opening" className="tabular-nums" /><p className="text-[11px] text-slate-500 mt-1">موجب (+) = العميل مدين لنا. سالب (−) = عندنا رصيد له. اتركها 0 إذا لا يوجد.</p></div>
                             )}
                         </div>
                     )}

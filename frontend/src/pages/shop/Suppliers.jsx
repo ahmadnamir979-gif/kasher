@@ -75,7 +75,7 @@ export default function Suppliers() {
                 </div>
                 <table className="w-full text-sm">
                     <thead className="bg-zinc-50 border-b text-right text-xs text-slate-600">
-                        <tr><th className="p-3">الاسم</th><th className="p-3">الهاتف</th><th className="p-3">العنوان</th><th className="p-3">الرصيد الافتتاحي</th><th className="p-3">الرصيد المستحق (علينا)</th><th className="p-3 text-left">إجراءات</th></tr>
+                        <tr><th className="p-3">الاسم</th><th className="p-3">الهاتف</th><th className="p-3">العنوان</th><th className="p-3">الرصيد الافتتاحي</th><th className="p-3">الرصيد الحالي</th><th className="p-3 text-left">إجراءات</th></tr>
                     </thead>
                     <tbody>
                         {filtered.map(s => (
@@ -84,7 +84,11 @@ export default function Suppliers() {
                                 <td className="p-3 tabular-nums text-slate-700">{s.phone || "—"}</td>
                                 <td className="p-3 text-slate-600 text-xs">{s.address || "—"}</td>
                                 <td className="p-3 tabular-nums text-slate-500">{fmt(s.opening_balance || 0)}</td>
-                                <td className={`p-3 tabular-nums font-bold ${(s.balance || 0) > 0 ? "text-rose-700" : "text-slate-400"}`}>{fmt(s.balance || 0)}{(s.balance || 0) > 0 && <div className="text-[10px] font-normal text-rose-500">لم يُسدَّد بعد</div>}</td>
+                                <td className={`p-3 tabular-nums font-bold ${(s.balance || 0) > 0 ? "text-rose-700" : (s.balance || 0) < 0 ? "text-emerald-700" : "text-slate-400"}`}>
+                                    {fmt(Math.abs(s.balance || 0))}
+                                    {(s.balance || 0) > 0 && <div className="text-[10px] font-normal text-rose-500">دائن — نحن مدينون للمورد</div>}
+                                    {(s.balance || 0) < 0 && <div className="text-[10px] font-normal text-emerald-600">مدين — رصيد لنا عنده</div>}
+                                </td>
                                 <td className="p-3">
                                     <div className="flex justify-end gap-1.5">
                                         {(s.balance || 0) > 0 && <Button size="sm" onClick={() => setPayDlg({ supplier: s, amount: s.balance, method: "cash" })} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1 h-8" data-testid={`pay-sup-${s.id}`}><Send className="w-3.5 h-3.5" /> تسديد</Button>}
@@ -112,7 +116,7 @@ export default function Suppliers() {
                             </div>
                             <div><Label>العنوان</Label><Input value={dlg.form.address} onChange={(e) => setDlg(d => ({...d, form: {...d.form, address: e.target.value}}))} data-testid="sup-address" placeholder="المدينة، الحي، الشارع..." /></div>
                             {dlg.mode === "add" && (
-                                <div><Label>الرصيد الابتدائي (المستحق للمورد)</Label><Input type="number" value={dlg.form.opening_balance} onChange={(e) => setDlg(d => ({...d, form: {...d.form, opening_balance: e.target.value}}))} data-testid="sup-opening" className="tabular-nums" /></div>
+                                <div><Label>الرصيد الافتتاحي (المستحق للمورد علينا)</Label><Input type="number" value={dlg.form.opening_balance} onChange={(e) => setDlg(d => ({...d, form: {...d.form, opening_balance: e.target.value}}))} data-testid="sup-opening" className="tabular-nums" /><p className="text-[11px] text-slate-500 mt-1">موجب (+) = نحن مدينون للمورد. سالب (−) = له عندنا رصيد سابق.</p></div>
                             )}
                         </div>
                     )}

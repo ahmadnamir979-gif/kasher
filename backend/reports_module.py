@@ -457,3 +457,124 @@ def register(api, db, require_shop_user):
             "liabilities": {"payable": payable, "total": total_liab},
             "equity": {"net_worth": equity}
         }
+
+    # ============ Daily Collections & Payments Report ============
+    @api.get("/reports/daily-collections")
+    async def daily_collections(date: Optional[str] = None, user=Depends(require_shop_user)):
+        """تقرير القبض/الدفع اليومي - All in/out cash movements for a specific day."""
+        day = date or _utc().date().isoformat()
+        day_start = f"{day}T00:00:00"
+        day_end = f"{day}T23:59:59.999"
+        shop = sid(user)
+
+        rows_in = []    # collections
+        rows_out = []   # payments
+
+        # 1) Cash/Card sales (receipts)
+        sls = await db.sales.find({
+            "shop_id": shop,
+            "payment_method": {"$in": ["cash", "card"]},
+            "created_at": {"$gte": day_start, "$lte": day_end},
+        }, {"_id": 0}).to_list(5000)
+        for s in sls:
+            amt = float(s.get("total", 0) or 0)
+            is_ret = s.get("is_return")
+            if is_ret:
+                rows_out.append({
+                    "time": (s.get("created_at") or "")[11:16],
+                    "type": "مرتجع بيع",
+                    "ref": f"INV-{s.get('invoice_no')}",
+                    "party": s.get("customer_name") or "عميل نقدي",
+                    "method": s.get("payment_method", "cash"),
+                    "amount": round(abs(amt), 2),
+                    "notes": "",
+                })
+            else:
+                rows_in.append({
+                    "time": (s.get("created_at") or "")[11:16],
+                    "type": "فاتورة بيع",
+                    "ref": f"INV-{s.get('invoice_no')}",
+                    "party": s.get("customer_name") or "عميل نقدي",
+                    "method": s.get("payment_method", "cash"),
+                    "amount": round(amt, 2),
+                    "notes": s.get("cashier_name") or "",
+                })
+
+        # 2) Customer / Supplier payments
+        pays = await db.payments.find({
+            "shop_id": shop,
+            "date": day,
+        }, {"_id": 0}).to_list(5000)
+        for p in pays:
+            is_in = p.get("direction") == "in"
+            row = {
+                "time": (p.get("created_at") or "")[11:16],
+                "type": "تحصيل من عميل" if is_in else "تسديد لمورد",
+                "ref": "PAY",
+                "party": p.get("party_name") or "—",
+                "method": p.get("method", "cash"),
+                "amount": round(float(p.get("amount", 0) or 0), 2),
+                "notes": p.get("notes") or "",
+            }
+            (rows_in if is_in else rows_out).append(row)
+
+        # 3) Expenses (payments out)
+        ex = await db.expenses.find({
+            "shop_id": shop,
+            "created_at": {"$gte": day_start, "$lte": day_end},
+        }, {"_id": 0}).to_list(5000)
+        for e in ex:
+            rows_out.append({
+                "time": (e.get("created_at") or "")[11:16],
+                "type": "مصروف",
+                "ref": (e.get("id") or "")[:8].upper(),
+                "party": e.get("category") or "—",
+                "method": "cash",
+                "amount": round(float(e.get("amount", 0) or 0), 2),
+                "notes": e.get("notes") or "",
+            })
+
+        # 4) Purchases paid cash (payments out)
+        purs = await db.purchases.find({
+            "shop_id": shop,
+            "paid": {"$gt": 0},
+            "created_at": {"$gte": day_start, "$lte": day_end},
+        }, {"_id": 0}).to_list(5000)
+        for p in purs:
+            rows_out.append({
+                "time": (p.get("created_at") or "")[11:16],
+                "type": "دفع فاتورة مشتريات",
+                "ref": f"PO-{p.get('invoice_no')}",
+                "party": p.get("supplier_name") or "—",
+                "method": "cash",
+                "amount": round(float(p.get("paid", 0) or 0), 2),
+                "notes": "",
+            })
+
+        rows_in.sort(key=lambda r: r["time"])
+        rows_out.sort(key=lambda r: r["time"])
+
+        total_in = round(sum(r["amount"] for r in rows_in), 2)
+        total_out = round(sum(r["amount"] for r in rows_out), 2)
+
+        # Group totals by method
+        def _by_method(rows):
+            m = {}
+            for r in rows:
+                k = r.get("method", "cash")
+                m[k] = round(m.get(k, 0) + r["amount"], 2)
+            return m
+
+        return {
+            "date": day,
+            "total_in": total_in,
+            "total_out": total_out,
+            "net": round(total_in - total_out, 2),
+            "count_in": len(rows_in),
+            "count_out": len(rows_out),
+            "by_method_in": _by_method(rows_in),
+            "by_method_out": _by_method(rows_out),
+            "rows_in": rows_in,
+            "rows_out": rows_out,
+        }
+
